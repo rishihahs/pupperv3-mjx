@@ -41,7 +41,6 @@ class BarkourEnv(MjxEnv):
             kick_vel (float): The kick velocity.
             **kwargs: Additional keyword arguments.
         """
-        path = Path(__file__).parent / "google_barkour_vb/scene_mjx.xml"
         self._dt = 0.02  # this environment is 50 fps
         self.brax_sys = mjcf.load(path).replace(dt=self._dt)
         model = self.brax_sys.get_model()

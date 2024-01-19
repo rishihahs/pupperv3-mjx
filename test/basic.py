@@ -38,7 +38,9 @@ train_fn = functools.partial(
 
 # Reset environments since internals may be overwritten by tracers from the
 # domain randomization function.
-env_scene_path = Path(__file__).parent.parent / "google_barkour_vb/scene_mjx.xml"
+env_scene_path = (
+    Path(__file__).parent.parent / "pupperv3_mjx/google_barkour_vb/scene_mjx.xml"
+)
 env = BarkourEnv(path=env_scene_path)
 eval_env = BarkourEnv(path=env_scene_path)
 # make_inference_fn, params, _ = train_fn(
