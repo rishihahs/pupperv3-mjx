@@ -11,7 +11,6 @@ import numpy as np
 from typing import Any, Dict, Sequence, Tuple, Union
 
 from brax import base, math
-from brax.base import Motion, Transform
 from brax.envs.base import MjxEnv, State
 from brax.io import mjcf
 
