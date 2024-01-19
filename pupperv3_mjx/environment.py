@@ -18,6 +18,7 @@ from pathlib import Path
 import mujoco
 
 from pupperv3_mjx import reward, config
+from etils import epath
 
 
 class BarkourEnv(MjxEnv):
@@ -28,6 +29,7 @@ class BarkourEnv(MjxEnv):
         obs_noise: float = 0.05,
         action_scale: float = 0.3,
         kick_vel: float = 0.05,
+        path=epath.Path("mujoco_menagerie/google_barkour_vb/scene_mjx.xml"),
         **kwargs,
     ):
         """

@@ -1,12 +1,10 @@
 from pupperv3_mjx import BarkourEnv, domain_randomize, progress
-from brax import envs
 from datetime import datetime
 import functools
 from brax.training.agents.ppo import train as ppo
 from brax.training.agents.ppo import networks as ppo_networks
 
-envs.register_environment("barkour", BarkourEnv)
-env_name = "barkour"
+from pathlib import Path
 
 x_data = []
 y_data = []
@@ -40,20 +38,21 @@ train_fn = functools.partial(
 
 # Reset environments since internals may be overwritten by tracers from the
 # domain randomization function.
-env = envs.get_environment(env_name)
-eval_env = envs.get_environment(env_name)
-make_inference_fn, params, _ = train_fn(
-    environment=env,
-    progress_fn=lambda num_steps, metrics: progress(
-        num_steps=num_steps,
-        metrics=metrics,
-        times=times,
-        x_data=x_data,
-        y_data=y_data,
-        ydataerr=ydataerr,
-        train_fn=train_fn,
-        max_y=max_y,
-        min_y=min_y,
-    ),
-    eval_env=eval_env,
-)
+env_scene_path = Path(__file__).parent.parent / "google_barkour_vb/scene_mjx.xml"
+env = BarkourEnv(path=env_scene_path)
+eval_env = BarkourEnv(path=env_scene_path)
+# make_inference_fn, params, _ = train_fn(
+#     environment=env,
+#     progress_fn=lambda num_steps, metrics: progress(
+#         num_steps=num_steps,
+#         metrics=metrics,
+#         times=times,
+#         x_data=x_data,
+#         y_data=y_data,
+#         ydataerr=ydataerr,
+#         train_fn=train_fn,
+#         max_y=max_y,
+#         min_y=min_y,
+#     ),
+#     eval_env=eval_env,
+# )
