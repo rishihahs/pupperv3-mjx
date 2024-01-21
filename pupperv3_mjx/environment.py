@@ -26,6 +26,8 @@ class BarkourEnv(MjxEnv):
 
     def __init__(
         self,
+        policy_dt: float = 0.02,
+        physics_timestep: float = 0.004,
         obs_noise: float = 0.05,
         action_scale: float = 0.3,
         kick_vel: float = 0.05,
@@ -36,15 +38,17 @@ class BarkourEnv(MjxEnv):
         Initialize the BarkourEnv environment.
 
         Args:
+            policy_dt (float): The time delta between policy updates.
+            physics_timestep (float): The physics timestep.
             obs_noise (float): The observation noise.
             action_scale (float): The action scale.
             kick_vel (float): The kick velocity.
             **kwargs: Additional keyword arguments.
         """
-        self._dt = 0.02  # this environment is 50 fps
+        self._dt = policy_dt
         self.brax_sys = mjcf.load(path).replace(dt=self._dt)
         model = self.brax_sys.get_model()
-        model.opt.timestep = 0.004
+        model.opt.timestep = physics_timestep
         model.opt.solver = mujoco.mjtSolver.mjSOL_NEWTON
 
         # override menagerie params for smoother policy
