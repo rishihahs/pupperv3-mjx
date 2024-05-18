@@ -53,11 +53,11 @@ def reward_tracking_ang_vel(
 
 
 def reward_feet_air_time(
-    air_time: jax.Array, first_contact: jax.Array, commands: jax.Array
+    air_time: jax.Array, first_contact: jax.Array, commands: jax.Array, minimum_airtime: float = 0.1
 ) -> jax.Array:
     # Reward air time.
-    rew_air_time = jp.sum((air_time - 0.1) * first_contact)
-    rew_air_time *= math.normalize(commands[:2])[1] > 0.05  # no reward for zero command
+    rew_air_time = jp.sum((air_time - minimum_airtime) * first_contact)
+    rew_air_time *= math.normalize(commands[:3])[1] > 0.05  # no reward for zero command
     return rew_air_time
 
 
@@ -67,9 +67,7 @@ def reward_stand_still(
     default_pose: jax.Array,
 ) -> jax.Array:
     # Penalize motion at zero commands
-    return jp.sum(jp.abs(joint_angles - default_pose)) * (
-        math.normalize(commands[:2])[1] < 0.1
-    )
+    return jp.sum(jp.abs(joint_angles - default_pose)) * (math.normalize(commands[:3])[1] < 0.1)
 
 
 def reward_foot_slip(
@@ -91,5 +89,5 @@ def reward_foot_slip(
     return jp.sum(jp.square(foot_vel[:, :2]) * contact_filt.reshape((-1, 1)))
 
 
-def reward_termination(done: jax.Array, step: jax.Array) -> jax.Array:
-    return done & (step < 500)
+def reward_termination(done: jax.Array, step: jax.Array, step_threshold: int) -> jax.Array:
+    return done & (step < step_threshold)

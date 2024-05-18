@@ -58,3 +58,24 @@ eval_env = BarkourEnv(path=env_scene_path)
 #     ),
 #     eval_env=eval_env,
 # )
+
+# train_fn = functools.partial(
+#     ppo.train,
+#     num_timesteps=100_000_000,
+#     num_evals=10,
+#     reward_scaling=1,
+#     episode_length=1000,
+#     normalize_observations=True,
+#     action_repeat=1,
+#     unroll_length=20,
+#     num_minibatches=32,
+#     num_updates_per_batch=4,
+#     discounting=0.97,
+#     learning_rate=3.0e-4,
+#     entropy_cost=1e-2,
+#     num_envs=8192,
+#     batch_size=256,
+#     network_factory=make_networks_factory,
+#     randomization_fn=domain_randomize,
+#     seed=0,
+# )

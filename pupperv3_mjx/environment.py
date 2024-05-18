@@ -21,102 +21,120 @@ from pupperv3_mjx import reward, config
 from etils import epath
 
 
-class BarkourEnv(MjxEnv):
-    """Environment for training the barkour quadruped joystick policy in MJX."""
+class PupperV3Env(PipelineEnv):
+    """Environment for training the Pupper V3 quadruped joystick policy in MJX."""
 
     def __init__(
         self,
-        policy_dt: float = 0.02,
-        physics_timestep: float = 0.004,
+        path: str,
+        action_scale: float,
+        observation_dim: int,
+        observation_history: int,
+        joint_lower_limits: List,
+        joint_upper_limits: List,
+        position_control_kp: float,
+        foot_site_names: List[str],
+        torso_name: str,
+        lower_leg_body_names: List[str],
+        resample_velocity_step: int,
+        linear_velocity_x_range: Tuple,
+        linear_velocity_y_range: Tuple,
+        angular_velocity_range: Tuple,
+        default_pose: jp.array,
+        reward_config,
+        dof_damping: float = 0.0,
         obs_noise: float = 0.05,
-        action_scale: float = 0.3,
-        kick_vel: float = 0.05,
-        path=epath.Path("mujoco_menagerie/google_barkour_vb/scene_mjx.xml"),
+        kick_vel: float = 0.05,  # [m/s]
+        push_interval: int = 10,
+        terminal_body_z: float = 0.10,  # [m]
+        early_termination_step_threshold: int = 500,
+        foot_radius: float = 0.02,
+        environment_timestep: float = 0.02,
+        physics_timestep: float = 0.004,
         **kwargs,
     ):
-        """
-        Initialize the BarkourEnv environment.
-
-        Args:
-            policy_dt (float): The time delta between policy updates.
-            physics_timestep (float): The physics timestep.
-            obs_noise (float): The observation noise.
-            action_scale (float): The action scale.
-            kick_vel (float): The kick velocity.
-            **kwargs: Additional keyword arguments.
-        """
-        self._dt = policy_dt
-        self.brax_sys = mjcf.load(path).replace(dt=self._dt)
-        model = self.brax_sys.get_model()
-        model.opt.timestep = physics_timestep
-        model.opt.solver = mujoco.mjtSolver.mjSOL_NEWTON
+        sys = mjcf.load(path)
+        self._dt = environment_timestep  # this environment is 50 fps
+        sys = sys.tree_replace({"opt.timestep": physics_timestep})
 
         # override menagerie params for smoother policy
-        model.dof_damping[6:] = 0.5239
-        model.actuator_gainprm[:, 0] = 35.0
-        model.actuator_biasprm[:, 1] = -35.0
+        sys = sys.replace(
+            # dof_damping=sys.dof_damping.at[6:].set(DOF_DAMPING),
+            actuator_gainprm=sys.actuator_gainprm.at[:, 0].set(position_control_kp),
+            actuator_biasprm=sys.actuator_biasprm.at[:, 1]
+            .set(-position_control_kp)
+            .at[:, 2]
+            .set(-dof_damping),
+        )
 
-        n_frames = kwargs.pop("n_frames", int(self._dt / model.opt.timestep))
-        super().__init__(model=model, n_frames=n_frames)
+        # override the default joint angles with DEFAULT_POSE
+        # sys.mj_model.keyframe('home').qpos = sys.mj_model.keyframe('home').qpos.at[7:].set(DEFAULT_POSE)
+        sys.mj_model.keyframe("home").qpos[7:] = default_pose
 
-        self.reward_config = config.get_config()
+        n_frames = kwargs.pop("n_frames", int(self._dt / sys.opt.timestep))
+        super().__init__(sys, backend="mjx", n_frames=n_frames)
+
+        self._reward_config = reward_config
         # set custom from kwargs
         for k, v in kwargs.items():
             if k.endswith("_scale"):
-                self.reward_config.rewards.scales[k[:-6]] = v
+                self._reward_config.rewards.scales[k[:-6]] = v
 
         self._torso_idx = mujoco.mj_name2id(
-            model, mujoco.mjtObj.mjOBJ_BODY.value, "torso"
+            sys.mj_model, mujoco.mjtObj.mjOBJ_BODY.value, torso_name
         )
+        assert self._torso_idx != -1, "torso not found"
         self._action_scale = action_scale
         self._obs_noise = obs_noise
         self._kick_vel = kick_vel
-        self._init_q = jp.array(model.keyframe("home").qpos)
-        self._default_pose = model.keyframe("home").qpos[7:]
-        self.lowers = jp.array([-0.7, -1.0, 0.05] * 4)
-        self.uppers = jp.array([0.52, 2.1, 2.1] * 4)
-        feet_site = [
-            "foot_front_left",
-            "foot_hind_left",
-            "foot_front_right",
-            "foot_hind_right",
-        ]
+        self._init_q = jp.array(sys.mj_model.keyframe("home").qpos)
+        self._default_pose = default_pose
+        self.lowers = joint_lower_limits
+        self.uppers = joint_upper_limits
+        feet_site = foot_site_names
         feet_site_id = [
-            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE.value, f)
-            for f in feet_site
+            mujoco.mj_name2id(sys.mj_model, mujoco.mjtObj.mjOBJ_SITE.value, f) for f in feet_site
         ]
         assert not any(id_ == -1 for id_ in feet_site_id), "Site not found."
         self._feet_site_id = np.array(feet_site_id)
-        lower_leg_body = [
-            "lower_leg_front_left",
-            "lower_leg_hind_left",
-            "lower_leg_front_right",
-            "lower_leg_hind_right",
-        ]
         lower_leg_body_id = [
-            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY.value, l)
-            for l in lower_leg_body
+            mujoco.mj_name2id(sys.mj_model, mujoco.mjtObj.mjOBJ_BODY.value, l)
+            for l in lower_leg_body_names
         ]
         assert not any(id_ == -1 for id_ in lower_leg_body_id), "Body not found."
         self._lower_leg_body_id = np.array(lower_leg_body_id)
-        self._foot_radius = 0.0175
-        self._nv = model.nv
+        self._foot_radius = foot_radius
+        self._nv = sys.nv
+
+        # model params
+
+        # training params
+        self._linear_velocity_x_range = linear_velocity_x_range
+        self._linear_velocity_y_range = linear_velocity_y_range
+        self._angular_velocity_range = angular_velocity_range
+
+        self._push_interval = push_interval
+        self._resample_velocity_step = resample_velocity_step
+
+        # observation configuration
+        self._observation_dim = observation_dim
+        self._observation_history = observation_history
+
+        # reward configuration
+        self._early_termination_step_threshold = early_termination_step_threshold
+
+        # terminal condition
+        self._terminal_body_z = terminal_body_z
 
     def sample_command(self, rng: jax.Array) -> jax.Array:
-        lin_vel_x = [-0.6, 1.5]  # min max [m/s]
-        lin_vel_y = [-0.8, 0.8]  # min max [m/s]
-        ang_vel_yaw = [-0.7, 0.7]  # min max [rad/s]
+        lin_vel_x = self._linear_velocity_x_range  # min max [m/s]
+        lin_vel_y = self._linear_velocity_y_range  # min max [m/s]
+        ang_vel_yaw = self._angular_velocity_range  # min max [rad/s]
 
         _, key1, key2, key3 = jax.random.split(rng, 4)
-        lin_vel_x = jax.random.uniform(
-            key1, (1,), minval=lin_vel_x[0], maxval=lin_vel_x[1]
-        )
-        lin_vel_y = jax.random.uniform(
-            key2, (1,), minval=lin_vel_y[0], maxval=lin_vel_y[1]
-        )
-        ang_vel_yaw = jax.random.uniform(
-            key3, (1,), minval=ang_vel_yaw[0], maxval=ang_vel_yaw[1]
-        )
+        lin_vel_x = jax.random.uniform(key1, (1,), minval=lin_vel_x[0], maxval=lin_vel_x[1])
+        lin_vel_y = jax.random.uniform(key2, (1,), minval=lin_vel_y[0], maxval=lin_vel_y[1])
+        ang_vel_yaw = jax.random.uniform(key3, (1,), minval=ang_vel_yaw[0], maxval=ang_vel_yaw[1])
         new_cmd = jp.array([lin_vel_x[0], lin_vel_y[0], ang_vel_yaw[0]])
         return new_cmd
 
@@ -127,19 +145,21 @@ class BarkourEnv(MjxEnv):
 
         state_info = {
             "rng": rng,
-            "last_act": jp.zeros(12),
-            "last_vel": jp.zeros(12),
+            "last_act": jp.zeros(12, dtype=float),
+            "last_vel": jp.zeros(12, dtype=float),
             "command": self.sample_command(key),
             "last_contact": jp.zeros(4, dtype=bool),
-            "feet_air_time": jp.zeros(4),
-            "rewards": {k: 0.0 for k in self.reward_config.rewards.scales.keys()},
+            "feet_air_time": jp.zeros(4, dtype=float),
+            "rewards": {k: 0.0 for k in self._reward_config.rewards.scales.keys()},
             "kick": jp.array([0.0, 0.0]),
             "step": 0,
         }
 
-        obs_history = jp.zeros(15 * 31)  # store 15 steps of history
+        obs_history = jp.zeros(
+            self._observation_history * self._observation_dim, dtype=float
+        )  # store 15 steps of history
         obs = self._get_obs(pipeline_state, state_info, obs_history)
-        reward, done = jp.zeros(2)
+        reward, done = jp.zeros(2, dtype=float)
         metrics = {"total_dist": 0.0}
         for k in state_info["rewards"]:
             metrics[k] = state_info["rewards"][k]
@@ -148,19 +168,16 @@ class BarkourEnv(MjxEnv):
         )  # pytype: disable=wrong-arg-types
         return state
 
-    def step(
-        self, state: State, action: jax.Array
-    ) -> State:  # pytype: disable=signature-mismatch
+    def step(self, state: State, action: jax.Array) -> State:  # pytype: disable=signature-mismatch
         rng, cmd_rng, kick_noise_2 = jax.random.split(state.info["rng"], 3)
 
         # kick
-        push_interval = 10
         kick_theta = jax.random.uniform(kick_noise_2, maxval=2 * jp.pi)
         kick = jp.array([jp.cos(kick_theta), jp.sin(kick_theta)])
-        kick *= jp.mod(state.info["step"], push_interval) == 0
-        qvel = state.pipeline_state.data.qvel  # pytype: disable=attribute-error
+        kick *= jp.mod(state.info["step"], self._push_interval) == 0
+        qvel = state.pipeline_state.qvel  # pytype: disable=attribute-error
         qvel = qvel.at[:2].set(kick * self._kick_vel + qvel[:2])
-        state = state.tree_replace({"pipeline_state.data.qvel": qvel})
+        state = state.tree_replace({"pipeline_state.qvel": qvel})
 
         # physics step
         motor_targets = self._default_pose + action * self._action_scale
@@ -174,9 +191,7 @@ class BarkourEnv(MjxEnv):
         joint_vel = pipeline_state.qd[6:]
 
         # foot contact data based on z-position
-        foot_pos = pipeline_state.data.site_xpos[
-            self._feet_site_id
-        ]  # pytype: disable=attribute-error
+        foot_pos = pipeline_state.site_xpos[self._feet_site_id]  # pytype: disable=attribute-error
         foot_contact_z = foot_pos[:, 2] - self._foot_radius
         contact = foot_contact_z < 1e-3  # a mm or less off the floor
         contact_filt_mm = contact | state.info["last_contact"]
@@ -189,59 +204,38 @@ class BarkourEnv(MjxEnv):
         done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < 0
         done |= jp.any(joint_angles < self.lowers)
         done |= jp.any(joint_angles > self.uppers)
-        done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < 0.18
+        done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
 
         # reward
         rewards = {
-            "tracking_lin_vel": (
-                reward.reward_tracking_lin_vel(
-                    commands=state.info["command"],
-                    x=x,
-                    xd=xd,
-                    tracking_sigma=self.reward_config.rewards.tracking_sigma,
-                )
-            ),
-            "tracking_ang_vel": (
-                reward.reward_tracking_ang_vel(
-                    commands=state.info["command"],
-                    x=x,
-                    xd=xd,
-                    tracking_sigma=self.reward_config.rewards.tracking_sigma,
-                )
-            ),
-            "lin_vel_z": reward.reward_lin_vel_z(xd=xd),
-            "ang_vel_xy": reward.reward_ang_vel_xy(xd=xd),
-            "orientation": reward.reward_orientation(x=x),
+            "tracking_lin_vel": (reward.reward_tracking_lin_vel(state.info["command"], x, xd)),
+            "tracking_ang_vel": (reward.reward_tracking_ang_vel(state.info["command"], x, xd)),
+            "lin_vel_z": reward.reward_lin_vel_z(xd),
+            "ang_vel_xy": reward.reward_ang_vel_xy(xd),
+            "orientation": reward.reward_orientation(x),
             "torques": reward.reward_torques(
-                torques=pipeline_state.data.qfrc_actuator
+                pipeline_state.qfrc_actuator
             ),  # pytype: disable=attribute-error
-            "action_rate": reward.reward_action_rate(
-                act=action, last_act=state.info["last_act"]
+            "mechanical_work": reward.reward_mechanical_work(
+                pipeline_state.qfrc_actuator[6:], pipeline_state.qvel[6:]
             ),
+            "action_rate": reward.reward_action_rate(action, state.info["last_act"]),
             "stand_still": reward.reward_stand_still(
-                commands=state.info["command"],
-                joint_angles=joint_angles,
-                default_pose=self._default_pose,
+                state.info["command"],
+                joint_angles,
             ),
             "feet_air_time": reward.reward_feet_air_time(
-                air_time=state.info["feet_air_time"],
-                first_contact=first_contact,
-                commands=state.info["command"],
+                state.info["feet_air_time"],
+                first_contact,
+                state.info["command"],
             ),
-            "foot_slip": reward.reward_foot_slip(
-                pipeline_state=pipeline_state,
-                contact_filt=contact_filt_cm,
-                feet_site_id=self._feet_site_id,
-                lower_leg_body_id=self._lower_leg_body_id,
-            ),
+            "foot_slip": reward.reward_foot_slip(pipeline_state, contact_filt_cm),
             "termination": reward.reward_termination(
-                done=done, step=state.info["step"]
+                done, state.info["step"], step_threshold=self._early_termination_step_threshold
             ),
         }
-        rewards = {
-            k: v * self.reward_config.rewards.scales[k] for k, v in rewards.items()
-        }
-        reward_sum = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+        rewards = {k: v * self._reward_config.rewards.scales[k] for k, v in rewards.items()}
+        reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
 
         # state management
         state.info["kick"] = kick
@@ -255,13 +249,13 @@ class BarkourEnv(MjxEnv):
 
         # sample new command if more than 500 timesteps achieved
         state.info["command"] = jp.where(
-            state.info["step"] > 500,
+            state.info["step"] > self._resample_velocity_step,
             self.sample_command(cmd_rng),
             state.info["command"],
         )
         # reset the step counter when done
         state.info["step"] = jp.where(
-            done | (state.info["step"] > 500), 0, state.info["step"]
+            done | (state.info["step"] > self._resample_velocity_step), 0, state.info["step"]
         )
 
         # log total displacement as a proxy metric
@@ -269,9 +263,7 @@ class BarkourEnv(MjxEnv):
         state.metrics.update(state.info["rewards"])
 
         done = jp.float32(done)
-        state = state.replace(
-            pipeline_state=pipeline_state, obs=obs, reward=reward_sum, done=done
-        )
+        state = state.replace(pipeline_state=pipeline_state, obs=obs, reward=reward, done=done)
         return state
 
     def _get_obs(
@@ -281,22 +273,23 @@ class BarkourEnv(MjxEnv):
         obs_history: jax.Array,
     ) -> jax.Array:
         inv_torso_rot = math.quat_inv(pipeline_state.x.rot[0])
-        local_rpyrate = math.rotate(pipeline_state.xd.ang[0], inv_torso_rot)
+        local_body_angular_velocity = math.rotate(pipeline_state.xd.ang[0], inv_torso_rot)
 
         obs = jp.concatenate(
             [
-                jp.array([local_rpyrate[2]]) * 0.25,  # yaw rate
+                local_body_angular_velocity,  # angular velocity
                 math.rotate(jp.array([0, 0, -1]), inv_torso_rot),  # projected gravity
-                state_info["command"] * jp.array([2.0, 2.0, 0.25]),  # command
+                state_info["command"],  # command
                 pipeline_state.q[7:] - self._default_pose,  # motor angles
                 state_info["last_act"],  # last action
             ]
         )
 
         # clip, noise
-        obs = jp.clip(obs, -100.0, 100.0) + self._obs_noise * jax.random.uniform(
+        obs = self._obs_noise * jax.random.uniform(
             state_info["rng"], obs.shape, minval=-1, maxval=1
         )
+
         # stack observations through time
         obs = jp.roll(obs_history, obs.size).at[: obs.size].set(obs)
 
@@ -305,15 +298,5 @@ class BarkourEnv(MjxEnv):
     def render(
         self, trajectory: List[base.State], camera: str | None = None
     ) -> Sequence[np.ndarray]:
-        """
-        Renders the trajectory of the environment.
-
-        Args:
-            trajectory (List[base.State]): The trajectory of the environment to render.
-            camera (str | None): The camera view for rendering. If None, defaults to "track".
-
-        Returns:
-            Sequence[np.ndarray]: The rendered frames of the environment trajectory.
-        """
         camera = camera or "track"
-        return super().render(trajectory, camera)
+        return super().render(trajectory, camera=camera)
