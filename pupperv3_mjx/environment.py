@@ -207,35 +207,37 @@ class PupperV3Env(PipelineEnv):
         done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
 
         # reward
-        rewards = {
-            "tracking_lin_vel": (reward.reward_tracking_lin_vel(state.info["command"], x, xd)),
-            "tracking_ang_vel": (reward.reward_tracking_ang_vel(state.info["command"], x, xd)),
-            "lin_vel_z": reward.reward_lin_vel_z(xd),
-            "ang_vel_xy": reward.reward_ang_vel_xy(xd),
-            "orientation": reward.reward_orientation(x),
-            "torques": reward.reward_torques(
+        rewards_dict = {
+            "tracking_lin_vel": (rewards.reward_tracking_lin_vel(state.info["command"], x, xd)),
+            "tracking_ang_vel": (rewards.reward_tracking_ang_vel(state.info["command"], x, xd)),
+            "lin_vel_z": rewards.reward_lin_vel_z(xd),
+            "ang_vel_xy": rewards.reward_ang_vel_xy(xd),
+            "orientation": rewards.reward_orientation(x),
+            "torques": rewards.reward_torques(
                 pipeline_state.qfrc_actuator
             ),  # pytype: disable=attribute-error
-            "mechanical_work": reward.reward_mechanical_work(
+            "mechanical_work": rewards.reward_mechanical_work(
                 pipeline_state.qfrc_actuator[6:], pipeline_state.qvel[6:]
             ),
-            "action_rate": reward.reward_action_rate(action, state.info["last_act"]),
-            "stand_still": reward.reward_stand_still(
+            "action_rate": rewards.reward_action_rate(action, state.info["last_act"]),
+            "stand_still": rewards.reward_stand_still(
                 state.info["command"],
                 joint_angles,
             ),
-            "feet_air_time": reward.reward_feet_air_time(
+            "feet_air_time": rewards.reward_feet_air_time(
                 state.info["feet_air_time"],
                 first_contact,
                 state.info["command"],
             ),
-            "foot_slip": reward.reward_foot_slip(pipeline_state, contact_filt_cm),
-            "termination": reward.reward_termination(
+            "foot_slip": rewards.reward_foot_slip(pipeline_state, contact_filt_cm),
+            "termination": rewards.reward_termination(
                 done, state.info["step"], step_threshold=self._early_termination_step_threshold
             ),
         }
-        rewards = {k: v * self._reward_config.rewards.scales[k] for k, v in rewards.items()}
-        reward = jp.clip(sum(rewards.values()) * self.dt, 0.0, 10000.0)
+        rewards_dict = {
+            k: v * self._reward_config.rewards.scales[k] for k, v in rewards_dict.items()
+        }
+        reward = jp.clip(sum(rewards_dict.values()) * self.dt, 0.0, 10000.0)
 
         # state management
         state.info["kick"] = kick
@@ -243,7 +245,7 @@ class PupperV3Env(PipelineEnv):
         state.info["last_vel"] = joint_vel
         state.info["feet_air_time"] *= ~contact_filt_mm
         state.info["last_contact"] = contact
-        state.info["rewards"] = rewards
+        state.info["rewards"] = rewards_dict
         state.info["step"] += 1
         state.info["rng"] = rng
 
