@@ -11,7 +11,7 @@ import numpy as np
 from typing import Any, Dict, Sequence, Tuple, Union
 
 from brax import base, math
-from brax.envs.base import State
+from brax.envs.base import PipelineEnv, State
 from brax.io import mjcf
 
 from pathlib import Path
