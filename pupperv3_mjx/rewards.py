@@ -28,6 +28,11 @@ def reward_torques(torques: jax.Array) -> jax.Array:
     return jp.sqrt(jp.sum(jp.square(torques))) + jp.sum(jp.abs(torques))
 
 
+def reward_mechanical_work(torques: jax.Array, velocities: jax.Array) -> jax.Array:
+    # Penalize mechanical work
+    return jp.sum(jp.abs(torques * velocities))
+
+
 def reward_action_rate(act: jax.Array, last_act: jax.Array) -> jax.Array:
     # Penalize changes in actions
     return jp.sum(jp.square(act - last_act))
@@ -53,7 +58,10 @@ def reward_tracking_ang_vel(
 
 
 def reward_feet_air_time(
-    air_time: jax.Array, first_contact: jax.Array, commands: jax.Array, minimum_airtime: float = 0.1
+    air_time: jax.Array,
+    first_contact: jax.Array,
+    commands: jax.Array,
+    minimum_airtime: float = 0.1,
 ) -> jax.Array:
     # Reward air time.
     rew_air_time = jp.sum((air_time - minimum_airtime) * first_contact)
@@ -73,13 +81,13 @@ def reward_stand_still(
 def reward_foot_slip(
     pipeline_state: base.State,
     contact_filt: jax.Array,
-    feet_site_id,
-    lower_leg_body_id,
+    feet_site_id: int,
+    lower_leg_body_id: int,
 ) -> jax.Array:
     # get velocities at feet which are offset from lower legs
     # pytype: disable=attribute-error
-    pos = pipeline_state.data.site_xpos[feet_site_id]  # feet position
-    feet_offset = pos - pipeline_state.data.xpos[lower_leg_body_id]
+    pos = pipeline_state.site_xpos[feet_site_id]  # feet position
+    feet_offset = pos - pipeline_state.xpos[lower_leg_body_id]
     # pytype: enable=attribute-error
     offset = base.Transform.create(pos=feet_offset)
     foot_indices = lower_leg_body_id - 1  # we got rid of the world body

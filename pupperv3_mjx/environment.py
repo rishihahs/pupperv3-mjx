@@ -17,7 +17,7 @@ from brax.io import mjcf
 from pathlib import Path
 import mujoco
 
-from pupperv3_mjx import reward, config
+from pupperv3_mjx import rewards, config
 from etils import epath
 
 
@@ -208,8 +208,22 @@ class PupperV3Env(PipelineEnv):
 
         # reward
         rewards_dict = {
-            "tracking_lin_vel": (rewards.reward_tracking_lin_vel(state.info["command"], x, xd)),
-            "tracking_ang_vel": (rewards.reward_tracking_ang_vel(state.info["command"], x, xd)),
+            "tracking_lin_vel": (
+                rewards.reward_tracking_lin_vel(
+                    state.info["command"],
+                    x,
+                    xd,
+                    tracking_sigma=self._reward_config.rewards.tracking_sigma,
+                )
+            ),
+            "tracking_ang_vel": (
+                rewards.reward_tracking_ang_vel(
+                    state.info["command"],
+                    x,
+                    xd,
+                    tracking_sigma=self._reward_config.rewards.tracking_sigma,
+                )
+            ),
             "lin_vel_z": rewards.reward_lin_vel_z(xd),
             "ang_vel_xy": rewards.reward_ang_vel_xy(xd),
             "orientation": rewards.reward_orientation(x),
@@ -221,17 +235,23 @@ class PupperV3Env(PipelineEnv):
             ),
             "action_rate": rewards.reward_action_rate(action, state.info["last_act"]),
             "stand_still": rewards.reward_stand_still(
-                state.info["command"],
-                joint_angles,
+                state.info["command"], joint_angles, self._default_pose
             ),
             "feet_air_time": rewards.reward_feet_air_time(
                 state.info["feet_air_time"],
                 first_contact,
                 state.info["command"],
             ),
-            "foot_slip": rewards.reward_foot_slip(pipeline_state, contact_filt_cm),
+            "foot_slip": rewards.reward_foot_slip(
+                pipeline_state,
+                contact_filt_cm,
+                feet_site_id=self._feet_site_id,
+                lower_leg_body_id=self._lower_leg_body_id,
+            ),
             "termination": rewards.reward_termination(
-                done, state.info["step"], step_threshold=self._early_termination_step_threshold
+                done,
+                state.info["step"],
+                step_threshold=self._early_termination_step_threshold,
             ),
         }
         rewards_dict = {
@@ -257,7 +277,9 @@ class PupperV3Env(PipelineEnv):
         )
         # reset the step counter when done
         state.info["step"] = jp.where(
-            done | (state.info["step"] > self._resample_velocity_step), 0, state.info["step"]
+            done | (state.info["step"] > self._resample_velocity_step),
+            0,
+            state.info["step"],
         )
 
         # log total displacement as a proxy metric
@@ -286,6 +308,8 @@ class PupperV3Env(PipelineEnv):
                 state_info["last_act"],  # last action
             ]
         )
+
+        assert self._observation_dim == obs.shape[0]
 
         # clip, noise
         obs = self._obs_noise * jax.random.uniform(

@@ -197,9 +197,7 @@ State(
             ],
             dtype=float32,
         ),
-        ctrl=Array(
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=float32
-        ),
+        ctrl=Array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=float32),
         qfrc_applied=Array(
             [
                 0.0,
@@ -1392,12 +1390,8 @@ State(
                 ],
                 dtype=float32,
             ),
-            solref=Array(
-                [[0.02, 1.0], [0.02, 1.0], [0.02, 1.0], [0.02, 1.0]], dtype=float32
-            ),
-            solreffriction=Array(
-                [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]], dtype=float32
-            ),
+            solref=Array([[0.02, 1.0], [0.02, 1.0], [0.02, 1.0], [0.02, 1.0]], dtype=float32),
+            solreffriction=Array([[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]], dtype=float32),
             solimp=Array(
                 [
                     [0.457, 0.975, 0.016, 0.5, 2.0],

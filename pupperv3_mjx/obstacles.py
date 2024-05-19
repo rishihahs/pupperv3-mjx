@@ -11,7 +11,10 @@ def add_boxes_to_model(tree, n_boxes, x_range, height=0.02, depth=0.02, length=3
     # Add N boxes to the worldbody
     for i in range(n_boxes):
         box_body = ET.SubElement(
-            worldbody, "body", name=f"box_{i}", pos=f"{(random.random()-0.5)*2*x_range} 0 0"
+            worldbody,
+            "body",
+            name=f"box_{i}",
+            pos=f"{(random.random()-0.5)*2*x_range} 0 0",
         )
         ET.SubElement(
             box_body,

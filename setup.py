@@ -9,7 +9,8 @@ setup(
         "jax",
         "mujoco",
         "mujoco_mjx",
-        "matplotlib"
+        "matplotlib",
+        "plotly",
         # List of dependencies required by your package
         # e.g., 'numpy>=1.18.5',
     ],

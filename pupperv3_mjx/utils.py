@@ -11,7 +11,7 @@ def progress(
     x_data: list,
     y_data: list,
     ydataerr: list,
-    train_fn,
+    num_timesteps: int,
     min_y: float,
     max_y: float,
 ):
@@ -20,7 +20,7 @@ def progress(
     y_data.append(metrics["eval/episode_reward"])
     ydataerr.append(metrics["eval/episode_reward_std"])
 
-    plt.xlim([0, train_fn.keywords["num_timesteps"] * 1.25])
+    plt.xlim([0, num_timesteps * 1.25])
     plt.ylim([min_y, max_y])
 
     plt.xlabel("# environment steps")
