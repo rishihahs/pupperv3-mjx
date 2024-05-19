@@ -2,6 +2,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import difflib
+import numpy as np
 
 
 def progress(
