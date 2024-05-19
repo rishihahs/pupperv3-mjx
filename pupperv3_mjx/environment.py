@@ -28,7 +28,6 @@ class PupperV3Env(PipelineEnv):
         self,
         path: str,
         action_scale: float,
-        observation_dim: int,
         observation_history: int,
         joint_lower_limits: List,
         joint_upper_limits: List,
@@ -117,7 +116,7 @@ class PupperV3Env(PipelineEnv):
         self._resample_velocity_step = resample_velocity_step
 
         # observation configuration
-        self._observation_dim = observation_dim
+        self.observation_dim = 33
         self._observation_history = observation_history
 
         # reward configuration
@@ -156,7 +155,7 @@ class PupperV3Env(PipelineEnv):
         }
 
         obs_history = jp.zeros(
-            self._observation_history * self._observation_dim, dtype=float
+            self._observation_history * self.observation_dim, dtype=float
         )  # store 15 steps of history
         obs = self._get_obs(pipeline_state, state_info, obs_history)
         reward, done = jp.zeros(2, dtype=float)
@@ -309,7 +308,7 @@ class PupperV3Env(PipelineEnv):
             ]
         )
 
-        assert self._observation_dim == obs.shape[0]
+        assert self.observation_dim == obs.shape[0]
 
         # clip, noise
         obs = self._obs_noise * jax.random.uniform(
