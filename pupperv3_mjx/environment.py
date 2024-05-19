@@ -311,7 +311,7 @@ class PupperV3Env(PipelineEnv):
         assert self.observation_dim == obs.shape[0]
 
         # clip, noise
-        obs = self._obs_noise * jax.random.uniform(
+        obs = jp.clip(obs, -100.0, 100.0) + self._obs_noise * jax.random.uniform(
             state_info["rng"], obs.shape, minval=-1, maxval=1
         )
 
