@@ -93,23 +93,28 @@ env_kwargs = dict(
     linear_velocity_y_range=LIN_VEL_Y_RANGE,
     angular_velocity_range=ANG_VEL_YAW_RANGE,
     default_pose=DEFAULT_POSE,
+    start_position_config=domain_randomization.StartPositionRandomization(
+        x_min=-1.0, x_max=1.0, y_min=-1.0, y_max=1.0, z_min=0.18, z_max=0.24
+    ),
     reward_config=config.get_config(),
 )
 
-N_OBSTACLES = 50
+N_OBSTACLES = 100
 OBSTACLE_X_RANGE = (-5, 5)
 OBSTACLE_Y_RANGE = (-5, 5)
 OBSTACLE_HEIGHT = 0.02
+OBSTACLE_LENGTH = 6.0
 
 # Add obstacles
 xml_str = ORIGINAL_MODEL_PATH.read_text()
 tree = ET.ElementTree(ET.fromstring(xml_str))
 tree = obstacles.add_boxes_to_model(
     tree,
-    n_boxes=50,
+    n_boxes=N_OBSTACLES,
     x_range=OBSTACLE_X_RANGE,
     y_range=OBSTACLE_Y_RANGE,
     height=OBSTACLE_HEIGHT,
+    length=OBSTACLE_LENGTH,
 )
 with open(PATH, "w+") as file:
     tree.write(file, encoding="unicode")

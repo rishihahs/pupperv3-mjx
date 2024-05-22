@@ -1,4 +1,6 @@
 import jax
+from dataclasses import dataclass
+from jax import numpy as jp
 
 
 def domain_randomize(sys, rng, friction_range=(0.6, 1.4), gain_range=(-0.5, 0.5)):
@@ -43,3 +45,50 @@ def domain_randomize(sys, rng, friction_range=(0.6, 1.4), gain_range=(-0.5, 0.5)
     )
 
     return sys, in_axes
+
+
+@dataclass
+class StartPositionRandomization:
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
+    z_min: float
+    z_max: float
+
+
+def random_z_rotation_quaternion(rng):
+    """Generates a random quaternion with a random yaw angle."""
+    yaw = jax.random.uniform(rng, (1,), minval=-jp.pi, maxval=jp.pi)
+    cos_yaw = jp.cos(yaw / 2)
+    sin_yaw = jp.sin(yaw / 2)
+    return jp.concatenate((cos_yaw, jp.zeros(2), sin_yaw))
+
+
+def randomize_qpos(qpos: jp.array, start_position_config: StartPositionRandomization, rng):
+    """Return qpos with randomized position of first body. Do not use rng again!"""
+
+    key_x, key_y, key_z, key_yaw = jax.random.split(rng, 4)
+    qpos = qpos.at[:3].set(
+        jax.random.uniform(
+            key_z,
+            shape=(3,),
+            minval=jp.array(
+                (
+                    start_position_config.x_min,
+                    start_position_config.y_min,
+                    start_position_config.z_min,
+                )
+            ),
+            maxval=jp.array(
+                (
+                    start_position_config.x_max,
+                    start_position_config.y_max,
+                    start_position_config.z_max,
+                )
+            ),
+        )
+    )
+    random_yaw_quat = random_z_rotation_quaternion(key_yaw)
+    qpos = qpos.at[3:7].set(random_yaw_quat)
+    return qpos

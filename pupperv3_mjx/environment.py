@@ -20,6 +20,8 @@ import mujoco
 from pupperv3_mjx import rewards, config
 from etils import epath
 
+from pupperv3_mjx import domain_randomization
+
 
 class PupperV3Env(PipelineEnv):
     """Environment for training the Pupper V3 quadruped joystick policy in MJX."""
@@ -40,6 +42,7 @@ class PupperV3Env(PipelineEnv):
         linear_velocity_x_range: Tuple,
         linear_velocity_y_range: Tuple,
         angular_velocity_range: Tuple,
+        start_position_config: domain_randomization.StartPositionRandomization,
         default_pose: jp.array,
         reward_config,
         obs_noise: float = 0.05,
@@ -105,7 +108,8 @@ class PupperV3Env(PipelineEnv):
         self._foot_radius = foot_radius
         self._nv = sys.nv
 
-        # model params
+        # start pos randomization params
+        self._start_position_config = start_position_config
 
         # training params
         self._linear_velocity_x_range = linear_velocity_x_range
@@ -138,15 +142,19 @@ class PupperV3Env(PipelineEnv):
         return new_cmd
 
     def reset(self, rng: jax.Array) -> State:  # pytype: disable=signature-mismatch
-        rng, key = jax.random.split(rng)
+        rng, sample_command_key, randomize_pos_key = jax.random.split(rng, 3)
 
-        pipeline_state = self.pipeline_init(self._init_q, jp.zeros(self._nv))
+        init_q = domain_randomization.randomize_qpos(
+            self._init_q, self._start_position_config, rng=randomize_pos_key
+        )
+
+        pipeline_state = self.pipeline_init(init_q, jp.zeros(self._nv))
 
         state_info = {
             "rng": rng,
             "last_act": jp.zeros(12, dtype=float),
             "last_vel": jp.zeros(12, dtype=float),
-            "command": self.sample_command(key),
+            "command": self.sample_command(sample_command_key),
             "last_contact": jp.zeros(4, dtype=bool),
             "feet_air_time": jp.zeros(4, dtype=float),
             "rewards": {k: 0.0 for k in self._reward_config.rewards.scales.keys()},
