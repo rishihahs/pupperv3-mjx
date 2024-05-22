@@ -31,6 +31,7 @@ class PupperV3Env(PipelineEnv):
         observation_history: int,
         joint_lower_limits: List,
         joint_upper_limits: List,
+        dof_damping: float,
         position_control_kp: float,
         foot_site_names: List[str],
         torso_name: str,
@@ -41,7 +42,6 @@ class PupperV3Env(PipelineEnv):
         angular_velocity_range: Tuple,
         default_pose: jp.array,
         reward_config,
-        dof_damping: float = 0.0,
         obs_noise: float = 0.05,
         kick_vel: float = 0.05,  # [m/s]
         push_interval: int = 10,
