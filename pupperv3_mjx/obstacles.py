@@ -34,13 +34,12 @@ def add_boxes_to_model(
         y = random.uniform(y_range[0], y_range[1])
         quat = random_z_rotation_quaternion()
         quat_str = " ".join(map(str, quat))
-        box_body = ET.SubElement(
-            worldbody, "body", name=f"box_{i}", pos=f"{x} {y} 0", quat=quat_str
-        )
         ET.SubElement(
-            box_body,
+            worldbody,
             "geom",
             name=f"box_geom_{i}",
+            pos=f"{x} {y} 0",
+            quat=quat_str,
             type="box",
             size=f"{depth/2.0} {length/2.0} {height}",
             rgba="0.1 0.5 0.8 1",
