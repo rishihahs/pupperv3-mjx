@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import difflib
 import numpy as np
+import re
+import xml.etree.ElementTree as ET
+from typing import List
 
 
 def progress(
@@ -61,7 +64,7 @@ def plot_multi_series(data, dt=1.0, display_axes=None, title=None):
     fig.show()
 
 
-def fuzzy_search(obj, search_str, cutoff=0.6):
+def fuzzy_search(obj, search_str: str, cutoff: float = 0.6):
     """
     Search through an object's properties and find those that match the search string in a fuzzy way.
 
@@ -90,7 +93,7 @@ def fuzzy_search(obj, search_str, cutoff=0.6):
     return results
 
 
-def set_mjx_custom_options(tree, max_contact_points, max_geom_pairs):
+def set_mjx_custom_options(tree: ET.ElementTree, max_contact_points: int, max_geom_pairs: int):
     root = tree.getroot()
     custom = root.find("custom")
     if custom is not None:
@@ -103,3 +106,25 @@ def set_mjx_custom_options(tree, max_contact_points, max_geom_pairs):
 
         return tree
     return None
+
+
+def set_robot_starting_position(
+    tree: ET.ElementTree, starting_pos: List, starting_quat: List = None
+):
+    """Change the starting position of the robot in the xml mujoco model file"""
+
+    body = tree.find(".//worldbody/body[@name='base_link']")
+    body.set("pos", f"{starting_pos[0]} {starting_pos[1]} {starting_pos[2]}")
+    if starting_quat is not None:
+        body.set(
+            "quat", f"{starting_quat[0]} {starting_quat[1]} {starting_quat[2]} {starting_quat[3]}"
+        )
+
+    home_position = tree.find(".//keyframe/key[@name='home']")
+    qpos_scalar = list(map(float, re.split(r"\s+", home_position.get("qpos").strip())))
+    qpos_scalar[:3] = starting_pos
+    if starting_quat is not None:
+        qpos_scalar[3:7] = starting_quat
+    updated_qpos = " ".join(map(str, qpos_scalar))
+    home_position.set("qpos", updated_qpos)
+    return tree
