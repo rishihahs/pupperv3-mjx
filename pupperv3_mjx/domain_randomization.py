@@ -3,8 +3,14 @@ from dataclasses import dataclass
 from jax import numpy as jp
 
 
-def domain_randomize(sys, rng, friction_range=(0.6, 1.4), gain_range=(-0.5, 0.5)):
-    """Randomizes the mjx.Model.
+def domain_randomize(
+    sys,
+    rng,
+    friction_range=(0.6, 1.4),
+    kp_multiplier_range=(0.75, 1.25),
+    kd_multiplier_range=(0.5, 2.0),
+):
+    """Randomizes the friction, actuator kp, & actuator kd
 
     TODO: What is the dimension of rng? The number of environments?
     """
@@ -16,13 +22,19 @@ def domain_randomize(sys, rng, friction_range=(0.6, 1.4), gain_range=(-0.5, 0.5)
         friction = jax.random.uniform(key, (1,), minval=friction_range[0], maxval=friction_range[1])
         friction = sys.geom_friction.at[:, 0].set(friction)
         # actuator
-        _, key = jax.random.split(key, 2)
-        param = (
-            jax.random.uniform(key, (1,), minval=gain_range[0], maxval=gain_range[1])
-            + sys.actuator_gainprm[:, 0]
+        _, key_kp, key_kd = jax.random.split(key, 3)
+        kp = (
+            jax.random.uniform(
+                key_kp, (1,), minval=kp_multiplier_range[0], maxval=kp_multiplier_range[1]
+            )
+            * sys.actuator_gainprm[:, 0]
         )
-        gain = sys.actuator_gainprm.at[:, 0].set(param)
-        bias = sys.actuator_biasprm.at[:, 1].set(-param)
+        kd = jax.random.uniform(
+            key_kd, (1,), minval=kd_multiplier_range[0], maxval=kd_multiplier_range[1]
+        ) * (-sys.actuator_biasprm[:, 2])
+
+        gain = sys.actuator_gainprm.at[:, 0].set(kp)
+        bias = sys.actuator_biasprm.at[:, 1].set(-kp).at[:, 2].set(-kd)
         return friction, gain, bias
 
     friction, gain, bias = rand(rng)
