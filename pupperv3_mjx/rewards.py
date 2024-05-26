@@ -111,7 +111,7 @@ def reward_termination(done: jax.Array, step: jax.Array, step_threshold: int) ->
 
 
 def reward_geom_collision(pipeline_state: base.State, geom_ids: np.array) -> jax.Array:
-    contact = jp.array([0.0])
+    contact = jp.array(0.0)
     for id in geom_ids:
         contact += jp.sum(
             ((pipeline_state.contact.geom1 == id) | (pipeline_state.contact.geom2 == id))
