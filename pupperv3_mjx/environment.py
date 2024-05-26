@@ -50,6 +50,7 @@ class PupperV3Env(PipelineEnv):
         push_interval: int = 10,
         terminal_body_z: float = 0.10,  # [m]
         early_termination_step_threshold: int = 500,
+        terminal_body_angle: float = 0.52,  # [rad]
         foot_radius: float = 0.02,
         environment_timestep: float = 0.02,
         physics_timestep: float = 0.004,
@@ -128,6 +129,7 @@ class PupperV3Env(PipelineEnv):
 
         # terminal condition
         self._terminal_body_z = terminal_body_z
+        self._terminal_body_angle = terminal_body_angle
 
     def sample_command(self, rng: jax.Array) -> jax.Array:
         lin_vel_x = self._linear_velocity_x_range  # min max [m/s]
@@ -208,7 +210,9 @@ class PupperV3Env(PipelineEnv):
 
         # done if joint limits are reached or robot is falling
         up = jp.array([0.0, 0.0, 1.0])
-        done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < 0
+        done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < math.cos(
+            self._terminal_body_angle
+        )
         done |= jp.any(joint_angles < self.lowers)
         done |= jp.any(joint_angles > self.uppers)
         done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
