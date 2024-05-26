@@ -30,6 +30,8 @@ def get_config():
                         orientation=-5.0,
                         # L2 regularization of joint torques, |tau|^2.
                         torques=-0.0002,
+                        # L2 reg of joint acceleration
+                        joint_acceleration=-1e-6,
                         # L1 regularization of mechanical work, |v * tau|.
                         mechanical_work=-0.00,
                         # Penalize the change in the action and encourage smooth

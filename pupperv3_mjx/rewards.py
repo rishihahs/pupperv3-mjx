@@ -25,7 +25,16 @@ def reward_orientation(x: Transform) -> jax.Array:
 
 def reward_torques(torques: jax.Array) -> jax.Array:
     # Penalize torques
-    return jp.sqrt(jp.sum(jp.square(torques))) + jp.sum(jp.abs(torques))
+    # This has a sparifying effect
+    # return jp.sqrt(jp.sum(jp.square(torques))) + jp.sum(jp.abs(torques))
+    # Use regular sum-squares like in LeggedGym
+    return jp.sum(jp.square(torques))
+
+
+def reward_joint_acceleration(
+    joint_vel: jax.Array, last_joint_vel: jax.Array, dt: float
+) -> jax.Array:
+    return jp.sum(jp.square((joint_vel - last_joint_vel) / dt))
 
 
 def reward_mechanical_work(torques: jax.Array, velocities: jax.Array) -> jax.Array:

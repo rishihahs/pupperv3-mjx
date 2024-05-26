@@ -241,6 +241,9 @@ class PupperV3Env(PipelineEnv):
             "torques": rewards.reward_torques(
                 pipeline_state.qfrc_actuator
             ),  # pytype: disable=attribute-error
+            "joint_acceleration": rewards.reward_joint_acceleration(
+                joint_vel, state.info["last_vel"], dt=self._dt
+            ),
             "mechanical_work": rewards.reward_mechanical_work(
                 pipeline_state.qfrc_actuator[6:], pipeline_state.qvel[6:]
             ),
