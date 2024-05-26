@@ -210,7 +210,7 @@ class PupperV3Env(PipelineEnv):
 
         # done if joint limits are reached or robot is falling
         up = jp.array([0.0, 0.0, 1.0])
-        done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < math.cos(
+        done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < np.cos(
             self._terminal_body_angle
         )
         done |= jp.any(joint_angles < self.lowers)
