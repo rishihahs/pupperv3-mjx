@@ -33,7 +33,7 @@ def setup_environment():
     tree = ET.ElementTree(ET.fromstring(xml_str))
 
     # Add obstacles
-    N_OBSTACLES = 100
+    N_OBSTACLES = 10
     OBSTACLE_X_RANGE = (-5, 5)
     OBSTACLE_Y_RANGE = (-5, 5)
     OBSTACLE_HEIGHT = 0.02
@@ -73,6 +73,12 @@ def setup_environment():
             "leg_back_l_3_foot_site",
         ],
         torso_name="base_link",
+        upper_leg_body_names=[
+            "leg_front_r_2",
+            "leg_front_l_2",
+            "leg_back_r_2",
+            "leg_back_l_2",
+        ],
         lower_leg_body_names=[
             "leg_front_r_3",
             "leg_front_l_3",
@@ -104,6 +110,8 @@ def test_pupper_environment(setup_environment):
     rng = jax.random.PRNGKey(0)
     jit_reset = jax.jit(eval_env.reset)
     jit_step = jax.jit(eval_env.step)
+    # jit_reset = eval_env.reset
+    # jit_step = eval_env.step
 
     state = jit_reset(rng)
     state.info["command"] = jp.array([0, 0, 0])
@@ -117,9 +125,10 @@ def test_pupper_environment(setup_environment):
     for i in range(n_steps):
         print("Step: ", i)
         act_rng, rng = jax.random.split(rng)
-        ctrl = jp.array(np.random.uniform(size=eval_env.sys.nu))
+        ctrl = jp.array(5 * np.random.uniform(low=-1.0, high=1.0, size=eval_env.sys.nu))
         state = jit_step(state, ctrl)
         rollout.append(state.pipeline_state)
+        print("knee collision: ", state.info["rewards"]["knee_collision"])
 
     print("Writing video")
     media.write_video(

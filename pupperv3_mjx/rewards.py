@@ -3,6 +3,7 @@ import math
 from jax import numpy as jp
 from brax.base import Motion, Transform
 from brax import base, math
+import numpy as np
 
 
 # ------------ reward functions----------------
@@ -90,8 +91,8 @@ def reward_stand_still(
 def reward_foot_slip(
     pipeline_state: base.State,
     contact_filt: jax.Array,
-    feet_site_id: int,
-    lower_leg_body_id: int,
+    feet_site_id: np.array,
+    lower_leg_body_id: np.array,
 ) -> jax.Array:
     # get velocities at feet which are offset from lower legs
     # pytype: disable=attribute-error
@@ -101,10 +102,19 @@ def reward_foot_slip(
     offset = base.Transform.create(pos=feet_offset)
     foot_indices = lower_leg_body_id - 1  # we got rid of the world body
     foot_vel = offset.vmap().do(pipeline_state.xd.take(foot_indices)).vel
-
     # Penalize large feet velocity for feet that are in contact with the ground.
     return jp.sum(jp.square(foot_vel[:, :2]) * contact_filt.reshape((-1, 1)))
 
 
 def reward_termination(done: jax.Array, step: jax.Array, step_threshold: int) -> jax.Array:
     return done & (step < step_threshold)
+
+
+def reward_geom_collision(pipeline_state: base.State, geom_ids: np.array) -> jax.Array:
+    contact = jp.array([0.0])
+    for id in geom_ids:
+        contact += jp.sum(
+            ((pipeline_state.contact.geom1 == id) | (pipeline_state.contact.geom2 == id))
+            * (pipeline_state.contact.dist < 0.0)
+        )
+    return contact

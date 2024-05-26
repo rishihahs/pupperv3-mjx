@@ -23,6 +23,21 @@ from etils import epath
 from pupperv3_mjx import domain_randomization
 
 
+def body_names_to_body_ids(mj_model, body_names: List[str]) -> np.array:
+    body_ids = [mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY.value, l) for l in body_names]
+    assert not any(id_ == -1 for id_ in body_ids), "Body not found."
+    return np.array(body_ids)
+
+
+def body_name_to_geom_ids(mj_model, body_name: str) -> np.array:
+    body = mj_model.body(body_name)
+    return body.geomadr + np.arange(np.squeeze(body.geomnum))
+
+
+def body_names_to_geom_idss(mj_model, body_names: List[str]) -> np.array:
+    return np.concatenate(list(body_name_to_geom_ids(mj_model, name) for name in body_names))
+
+
 class PupperV3Env(PipelineEnv):
     """Environment for training the Pupper V3 quadruped joystick policy in MJX."""
 
@@ -37,6 +52,7 @@ class PupperV3Env(PipelineEnv):
         position_control_kp: float,
         foot_site_names: List[str],
         torso_name: str,
+        upper_leg_body_names: List[str],
         lower_leg_body_names: List[str],
         resample_velocity_step: int,
         linear_velocity_x_range: Tuple,
@@ -100,12 +116,10 @@ class PupperV3Env(PipelineEnv):
         ]
         assert not any(id_ == -1 for id_ in feet_site_id), "Site not found."
         self._feet_site_id = np.array(feet_site_id)
-        lower_leg_body_id = [
-            mujoco.mj_name2id(sys.mj_model, mujoco.mjtObj.mjOBJ_BODY.value, l)
-            for l in lower_leg_body_names
-        ]
-        assert not any(id_ == -1 for id_ in lower_leg_body_id), "Body not found."
-        self._lower_leg_body_id = np.array(lower_leg_body_id)
+
+        self._lower_leg_body_id = body_names_to_body_ids(sys.mj_model, lower_leg_body_names)
+        self._upper_leg_geom_ids = body_names_to_geom_idss(sys.mj_model, upper_leg_body_names)
+
         self._foot_radius = foot_radius
         self._nv = sys.nv
 
@@ -266,6 +280,9 @@ class PupperV3Env(PipelineEnv):
                 done,
                 state.info["step"],
                 step_threshold=self._early_termination_step_threshold,
+            ),
+            "knee_collision": rewards.reward_geom_collision(
+                pipeline_state, self._upper_leg_geom_ids
             ),
         }
         rewards_dict = {
