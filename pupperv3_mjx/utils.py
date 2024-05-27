@@ -9,6 +9,7 @@ from typing import List, Callable
 import mediapy as media
 import os
 import wandb
+import jax
 
 
 def progress(
