@@ -10,6 +10,7 @@ import mediapy as media
 import os
 import wandb
 import jax
+from jax import numpy as jp
 
 
 def progress(
@@ -192,9 +193,9 @@ def visualize_policy(
     )
     wandb.log(
         {
-            "eval/video/command/vx": the_command[0],
-            "eval/video/command/vy": the_command[1],
-            "eval/video/command/wz": the_command[2],
+            "eval/video/command/vx": vx,
+            "eval/video/command/vy": vy,
+            "eval/video/command/wz": wz,
             "eval/video": wandb.Video(filename, format="mp4", fps=fps),
         },
         step=current_step,
