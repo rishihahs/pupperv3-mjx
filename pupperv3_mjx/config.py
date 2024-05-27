@@ -49,6 +49,8 @@ def get_config():
                         foot_slip=-0.1,
                         # Penalize knee hitting ground
                         knee_collision=-1.0,
+                        # Penalize body hitting ground,
+                        body_collision=-1.0,
                     )
                 ),
                 # Tracking reward = exp(-error^2/sigma).

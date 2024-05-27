@@ -128,7 +128,12 @@ def test_pupper_environment(setup_environment):
         ctrl = jp.array(5 * np.random.uniform(low=-1.0, high=1.0, size=eval_env.sys.nu))
         state = jit_step(state, ctrl)
         rollout.append(state.pipeline_state)
-        print("knee collision: ", state.info["rewards"]["knee_collision"])
+        print(
+            "knee collision: ",
+            state.info["rewards"]["knee_collision"],
+            "body collision: ",
+            state.info["rewards"]["body_collision"],
+        )
 
     print("Writing video")
     media.write_video(

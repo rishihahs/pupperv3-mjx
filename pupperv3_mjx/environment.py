@@ -99,6 +99,7 @@ class PupperV3Env(PipelineEnv):
             if k.endswith("_scale"):
                 self._reward_config.rewards.scales[k[:-6]] = v
 
+        self._torso_geom_ids = body_name_to_geom_ids(sys.mj_model, torso_name)
         self._torso_idx = mujoco.mj_name2id(
             sys.mj_model, mujoco.mjtObj.mjOBJ_BODY.value, torso_name
         )
@@ -284,6 +285,7 @@ class PupperV3Env(PipelineEnv):
             "knee_collision": rewards.reward_geom_collision(
                 pipeline_state, self._upper_leg_geom_ids
             ),
+            "body_collision": rewards.reward_geom_collision(pipeline_state, self._torso_geom_ids),
         }
         rewards_dict = {
             k: v * self._reward_config.rewards.scales[k] for k, v in rewards_dict.items()
