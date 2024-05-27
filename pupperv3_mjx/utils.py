@@ -5,7 +5,7 @@ import difflib
 import numpy as np
 import re
 import xml.etree.ElementTree as ET
-from typing import List
+from typing import List, Callable
 
 
 def progress(
@@ -128,3 +128,67 @@ def set_robot_starting_position(
     updated_qpos = " ".join(map(str, qpos_scalar))
     home_position.set("qpos", updated_qpos)
     return tree
+
+
+def visualize_policy(
+    current_step,
+    make_policy_fn,
+    params,
+    eval_env,
+    jit_step: Callable,
+    jit_reset: Callable,
+    output_folder: str,
+):
+    inference_fn = make_policy_fn(params)
+    jit_inference_fn = jax.jit(inference_fn)
+
+    # Make robot go forward, back, left, right
+    command_seq = jp.array(
+        [
+            [0.5, 0.0, 0.0],
+            [-0.5, 0.0, 0.0],
+            [0.0, 0.4, 0.0],
+            [0.0, -0.4, 0.0],
+            [0.0, 0.0, 1.5],
+            [0.0, 0.0, -1.5],
+        ]
+    )
+
+    # initialize the state
+    rng = jax.random.PRNGKey(0)
+    state = jit_reset(rng)
+    state.info["command"] = command_seq[0]
+    rollout = [state.pipeline_state]
+
+    # grab a trajectory
+    n_steps = 480
+    render_every = 2
+    ctrls = []
+
+    for i in range(n_steps):
+        act_rng, rng = jax.random.split(rng)
+
+        # Change command every 80 steps
+        state.info["command"] = command_seq[int(i / 80)]
+
+        ctrl, _ = jit_inference_fn(state.obs, act_rng)
+        state = jit_step(state, ctrl)
+        rollout.append(state.pipeline_state)
+        ctrls.append(ctrl)
+
+    filename = os.path.join(output_folder, f"step_{current_step}_policy.mp4")
+    fps = int(1.0 / eval_env.dt / render_every)
+    media.write_video(
+        filename,
+        eval_env.render(rollout[::render_every], camera="tracking_cam"),
+        fps=fps,
+    )
+    wandb.log(
+        {
+            "eval/video/command/vx": the_command[0],
+            "eval/video/command/vy": the_command[1],
+            "eval/video/command/wz": the_command[2],
+            "eval/video": wandb.Video(filename, format="mp4", fps=fps),
+        },
+        step=current_step,
+    )

@@ -47,35 +47,49 @@ def test_domain_randomize():
 
     original_kp = sys.actuator_gainprm[:, 0]
     original_kd = -sys.actuator_biasprm[:, 2]
+    original_body_inertia = sys.body_inertia[1]
+    original_body_com = sys.body_ipos[1]
+
+    rngs = jax.random.split(rng, 10)
 
     # Call the domain_randomize function
     sys, in_axes = domain_randomization.domain_randomize(
         sys,
-        jp.array([rng]),
-        friction_range=(0.6, 1.4),
-        kp_multiplier_range=(0.75, 1.25),
-        kd_multiplier_range=(0.5, 2.0),
+        rngs,
+        friction_range=(2.0, 10.0),
+        kp_multiplier_range=(1.1, 1.25),
+        kd_multiplier_range=(1.5, 2.0),
+        body_com_x_shift_range=(0.02, 0.04),
+        body_com_y_shift_range=(0.02, 0.04),
+        body_com_z_shift_range=(0.02, 0.04),
+        body_inertia_scale_range=(1.5, 2.0),
     )
 
     # Check if the output sys has the attributes updated correctly
-    assert sys.geom_friction.shape == (1, 24, 3)
-    assert sys.actuator_gainprm.shape == (1, 12, 10)
-    assert sys.actuator_biasprm.shape == (1, 12, 10)
+    assert sys.geom_friction.shape == (10, 24, 3)
+    assert sys.actuator_gainprm.shape == (10, 12, 10)
+    assert sys.actuator_biasprm.shape == (10, 12, 10)
 
-    # Further assertions can be added to check the exact values within the expected ranges
-    # For example:
-    assert (sys.geom_friction[0, :, 0] >= 0.6).all() and (sys.geom_friction[0, :, 0] <= 1.4).all()
+    # Test friction changed
+    assert (sys.geom_friction[:, :, 0] >= 2.0).all() and (sys.geom_friction[:, :, 0] <= 10.0).all()
 
-    assert (sys.actuator_gainprm[0, :, 0] >= 0.75 * original_kp).all() and (
-        sys.actuator_gainprm[0, :, 0] <= 1.25 * original_kp
+    # Test actuator gains changed
+    assert (sys.actuator_gainprm[:, :, 0] >= 1.1 * original_kp).all() and (
+        sys.actuator_gainprm[:, :, 0] <= 1.25 * original_kp
     ).all()
-    assert (-sys.actuator_biasprm[0, :, 2] >= 0.5 * original_kd).all() and (
-        -sys.actuator_biasprm[0, :, 2] <= 2.0 * original_kd
+    assert (-sys.actuator_biasprm[:, :, 2] >= 1.5 * original_kd).all() and (
+        -sys.actuator_biasprm[:, :, 2] <= 2.0 * original_kd
     ).all()
 
+    # Test body inertia changed
+    assert (sys.body_inertia[:, 1] >= 1.5 * original_body_inertia).all() and (
+        sys.body_inertia[:, 1] <= 2.0 * original_body_inertia
+    ).all()
 
-if __name__ == "__main__":
-    pytest.main()
+    # Test body com changed
+    assert (sys.body_ipos[:, 1] - original_body_com >= 0.02).all() and (
+        sys.body_ipos[:, 1] - original_body_com <= 0.04
+    ).all()
 
 
 if __name__ == "__main__":
