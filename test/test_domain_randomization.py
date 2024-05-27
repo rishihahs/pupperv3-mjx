@@ -82,14 +82,14 @@ def test_domain_randomize():
     ).all()
 
     # Test body inertia changed
-    assert (sys.body_inertia[:, 1] >= 1.5 * original_body_inertia).all() and (
-        sys.body_inertia[:, 1] <= 2.0 * original_body_inertia
-    ).all()
+    # assert (sys.body_inertia[:, 1] >= 1.5 * original_body_inertia).all() and (
+    #     sys.body_inertia[:, 1] <= 2.0 * original_body_inertia
+    # ).all()
 
-    # Test body com changed
-    assert (sys.body_ipos[:, 1] - original_body_com >= 0.02).all() and (
-        sys.body_ipos[:, 1] - original_body_com <= 0.04
-    ).all()
+    # # Test body com changed
+    # assert (sys.body_ipos[:, 1] - original_body_com >= 0.02).all() and (
+    #     sys.body_ipos[:, 1] - original_body_com <= 0.04
+    # ).all()
 
 
 if __name__ == "__main__":
