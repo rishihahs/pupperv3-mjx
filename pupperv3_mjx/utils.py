@@ -141,6 +141,9 @@ def visualize_policy(
     jit_step: Callable,
     jit_reset: Callable,
     output_folder: str,
+    vx: float = 0.5,
+    vy: float = 0.4,
+    wz: float = 1.5,
 ):
     inference_fn = make_policy_fn(params)
     jit_inference_fn = jax.jit(inference_fn)
@@ -148,12 +151,12 @@ def visualize_policy(
     # Make robot go forward, back, left, right
     command_seq = jp.array(
         [
-            [0.5, 0.0, 0.0],
-            [-0.5, 0.0, 0.0],
-            [0.0, 0.4, 0.0],
-            [0.0, -0.4, 0.0],
-            [0.0, 0.0, 1.5],
-            [0.0, 0.0, -1.5],
+            [vx, 0.0, 0.0],
+            [-vx, 0.0, 0.0],
+            [0.0, vy, 0.0],
+            [0.0, -vy, 0.0],
+            [0.0, 0.0, wz],
+            [0.0, 0.0, -wz],
         ]
     )
 
