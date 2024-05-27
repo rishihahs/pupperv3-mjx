@@ -40,32 +40,33 @@ def domain_randomize(
         gain = sys.actuator_gainprm.at[:, 0].set(kp)
         bias = sys.actuator_biasprm.at[:, 1].set(-kp).at[:, 2].set(-kd)
 
-        _, key_com = jax.random.split(key_kd)
-        body_com_shift = jax.random.uniform(
-            key_com,
-            (3,),
-            minval=jp.array(
-                [body_com_x_shift_range[0], body_com_y_shift_range[0], body_com_z_shift_range[0]]
-            ),
-            maxval=jp.array(
-                [body_com_x_shift_range[1], body_com_y_shift_range[1], body_com_z_shift_range[1]]
-            ),
-        )
-        body_com = sys.body_ipos.at[1].set(sys.body_ipos[1] + body_com_shift)
+        # _, key_com = jax.random.split(key_kd)
+        # body_com_shift = jax.random.uniform(
+        #     key_com,
+        #     (3,),
+        #     minval=jp.array(
+        #         [body_com_x_shift_range[0], body_com_y_shift_range[0], body_com_z_shift_range[0]]
+        #     ),
+        #     maxval=jp.array(
+        #         [body_com_x_shift_range[1], body_com_y_shift_range[1], body_com_z_shift_range[1]]
+        #     ),
+        # )
+        # body_com = sys.body_ipos.at[1].set(sys.body_ipos[1] + body_com_shift)
 
-        # TODO(nathankau) think if we want to scale inertia uniformly or not
-        _, key_inertia = jax.random.split(key_com)
-        body_inertia_scale = jax.random.uniform(
-            key_inertia,
-            (3,),
-            minval=body_inertia_scale_range[0],
-            maxval=body_inertia_scale_range[1],
-        )
-        body_inertia = sys.body_inertia.at[1].set(sys.body_inertia[1] * body_inertia_scale)
+        # # TODO(nathankau) think if we want to scale inertia uniformly or not
+        # _, key_inertia = jax.random.split(key_com)
+        # body_inertia_scale = jax.random.uniform(
+        #     key_inertia,
+        #     (3,),
+        #     minval=body_inertia_scale_range[0],
+        #     maxval=body_inertia_scale_range[1],
+        # )
+        # body_inertia = sys.body_inertia.at[1].set(sys.body_inertia[1] * body_inertia_scale)
 
-        return friction, gain, bias, body_com, body_inertia
+        return friction, gain, bias  # , body_com, body_inertia
 
-    friction, gain, bias, body_com, body_inertia = rand(rng)
+    # friction, gain, bias, body_com, body_inertia = rand(rng)
+    friction, gain, bias = rand(rng)
 
     in_axes = jax.tree_map(lambda x: None, sys)
     in_axes = in_axes.tree_replace(
@@ -81,8 +82,8 @@ def domain_randomize(
             "geom_friction": friction,
             "actuator_gainprm": gain,
             "actuator_biasprm": bias,
-            "body_ipos": body_com,
-            "body_inertia": body_inertia,
+            # "body_ipos": body_com,
+            # "body_inertia": body_inertia,
         }
     )
 
