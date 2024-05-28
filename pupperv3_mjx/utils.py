@@ -202,3 +202,14 @@ def visualize_policy(
         },
         step=current_step,
     )
+
+
+def activation_fn_map(activation_name: str):
+    activation_name = activation_name.lower()
+    return {
+        "relu": jax.nn.relu,
+        "sigmoid": jax.nn.sigmoid,
+        "elu": jax.nn.elu,
+        "tanh": jp.tanh,
+        "softmax": jax.nn.softmax,
+    }[activation_name]
