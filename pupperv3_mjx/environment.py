@@ -190,6 +190,7 @@ class PupperV3Env(PipelineEnv):
         state = State(
             pipeline_state, obs, reward, done, metrics, state_info
         )  # pytype: disable=wrong-arg-types
+
         return state
 
     def step(self, state: State, action: jax.Array) -> State:  # pytype: disable=signature-mismatch
