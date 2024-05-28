@@ -70,6 +70,7 @@ class PupperV3Env(PipelineEnv):
         foot_radius: float = 0.02,
         environment_timestep: float = 0.02,
         physics_timestep: float = 0.004,
+        desired_world_z_in_body_frame: jax.Array = jp.array([0.0, 0.0, 1.0]),
         **kwargs,
     ):
         sys = mjcf.load(path)
@@ -146,6 +147,9 @@ class PupperV3Env(PipelineEnv):
         self._terminal_body_z = terminal_body_z
         self._terminal_body_angle = terminal_body_angle
 
+        # desired orientation
+        self._desired_world_z_in_body_frame = desired_world_z_in_body_frame
+
     def sample_command(self, rng: jax.Array) -> jax.Array:
         lin_vel_x = self._linear_velocity_x_range  # min max [m/s]
         lin_vel_y = self._linear_velocity_y_range  # min max [m/s]
@@ -177,6 +181,7 @@ class PupperV3Env(PipelineEnv):
             "rewards": {k: 0.0 for k in self._reward_config.rewards.scales.keys()},
             "kick": jp.array([0.0, 0.0]),
             "step": 0,
+            "desired_world_z_in_body_frame": self._desired_world_z_in_body_frame,
         }
 
         obs_history = jp.zeros(
@@ -250,6 +255,11 @@ class PupperV3Env(PipelineEnv):
                     xd,
                     tracking_sigma=self._reward_config.rewards.tracking_sigma,
                 )
+            ),
+            "tracking_orientation": rewards.reward_tracking_orientation(
+                state.info["desired_world_z_in_body_frame"],
+                x,
+                tracking_sigma=self._reward_config.rewards.tracking_sigma,
             ),
             "lin_vel_z": rewards.reward_lin_vel_z(xd),
             "ang_vel_xy": rewards.reward_ang_vel_xy(xd),

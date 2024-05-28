@@ -17,6 +17,16 @@ def reward_ang_vel_xy(xd: Motion) -> jax.Array:
     return jp.sum(jp.square(xd.ang[0, :2]))
 
 
+def reward_tracking_orientation(
+    desired_world_z_in_body_frame: jax.Array, x: Transform, tracking_sigma: float
+) -> jax.Array:
+    # Tracking of desired body orientation
+    world_z = jp.array([0.0, 0.0, 1.0])
+    world_z_in_body_frame = math.rotate(world_z, math.quat_inv(x.rot[0]))
+    error = jp.sum(jp.square(world_z_in_body_frame - desired_world_z_in_body_frame))
+    return jp.exp(-error / tracking_sigma)
+
+
 def reward_orientation(x: Transform) -> jax.Array:
     # Penalize non flat base orientation
     up = jp.array([0.0, 0.0, 1.0])

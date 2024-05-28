@@ -28,6 +28,8 @@ def get_config():
                         ang_vel_xy=-0.05,
                         # Penalize non-zero roll and pitch angles. L2 penalty.
                         orientation=-5.0,
+                        # Track desired body orientation
+                        tracking_orientation=1.0,
                         # L2 regularization of joint torques, |tau|^2.
                         torques=-0.0002,
                         # L2 reg of joint acceleration
