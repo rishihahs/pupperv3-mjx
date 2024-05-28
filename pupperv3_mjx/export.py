@@ -8,7 +8,7 @@ def fold_in_normalization(A, b, mean, std):
     return A_prime, b_prime
 
 
-def convert_params(params):
+def convert_params(params, activation: str, final_activation: str = "tanh"):
     mean, std = params[0].mean, params[0].std
     params_dict = params[1]["params"]
     layers = []
@@ -36,7 +36,7 @@ def convert_params(params):
         # Create layer dictionary
         layer_dict = {
             "type": "dense",
-            "activation": "relu" if not is_final_layer else "tanh",
+            "activation": activation if not is_final_layer else final_activation,
             "shape": [None, output_shape],
             "weights": [kernel_list, bias.tolist()],
         }
