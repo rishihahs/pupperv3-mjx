@@ -39,6 +39,8 @@ def progress(
     plt.errorbar(x_data, y_data, yerr=ydataerr)
     plt.show()
 
+    wandb.log(metrics, step=num_steps)
+
 
 def plot_multi_series(data, dt=1.0, display_axes=None, title=None):
     # Create a Plotly figure to plot the three series
