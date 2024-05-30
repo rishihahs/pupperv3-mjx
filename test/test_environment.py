@@ -60,7 +60,7 @@ def setup_environment():
 
     env_kwargs = dict(
         path=PATH.as_posix(),
-        action_scale=0.3,
+        action_scale=0.75,
         observation_history=2,
         joint_lower_limits=JOINT_LOWER_LIMITS,
         joint_upper_limits=JOINT_UPPER_LIMITS,
@@ -125,7 +125,7 @@ def test_pupper_environment(setup_environment):
     for i in range(n_steps):
         print("Step: ", i)
         act_rng, rng = jax.random.split(rng)
-        ctrl = jp.array(5 * np.random.uniform(low=-1.0, high=1.0, size=eval_env.sys.nu))
+        ctrl = jp.array(0.5 * np.random.uniform(low=-1.0, high=1.0, size=eval_env.sys.nu))
         state = jit_step(state, ctrl)
         rollout.append(state.pipeline_state)
         print(
@@ -133,6 +133,8 @@ def test_pupper_environment(setup_environment):
             state.info["rewards"]["knee_collision"],
             "body collision: ",
             state.info["rewards"]["body_collision"],
+            "tracking orientation: ",
+            state.info["rewards"]["tracking_orientation"],
         )
 
     print("Writing video")

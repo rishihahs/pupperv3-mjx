@@ -240,21 +240,17 @@ class PupperV3Env(PipelineEnv):
 
         # reward
         rewards_dict = {
-            "tracking_lin_vel": (
-                rewards.reward_tracking_lin_vel(
-                    state.info["command"],
-                    x,
-                    xd,
-                    tracking_sigma=self._reward_config.rewards.tracking_sigma,
-                )
+            "tracking_lin_vel": rewards.reward_tracking_lin_vel(
+                state.info["command"],
+                x,
+                xd,
+                tracking_sigma=self._reward_config.rewards.tracking_sigma,
             ),
-            "tracking_ang_vel": (
-                rewards.reward_tracking_ang_vel(
-                    state.info["command"],
-                    x,
-                    xd,
-                    tracking_sigma=self._reward_config.rewards.tracking_sigma,
-                )
+            "tracking_ang_vel": rewards.reward_tracking_ang_vel(
+                state.info["command"],
+                x,
+                xd,
+                tracking_sigma=self._reward_config.rewards.tracking_sigma,
             ),
             "tracking_orientation": rewards.reward_tracking_orientation(
                 state.info["desired_world_z_in_body_frame"],
