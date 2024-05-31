@@ -63,7 +63,7 @@ class PupperV3Env(PipelineEnv):
         reward_config,
         obs_noise: float = 0.05,
         kick_vel: float = 0.05,  # [m/s]
-        push_interval: int = 10,
+        kick_interval: int = 10,
         terminal_body_z: float = 0.10,  # [m]
         early_termination_step_threshold: int = 500,
         terminal_body_angle: float = 0.52,  # [rad]
@@ -133,7 +133,7 @@ class PupperV3Env(PipelineEnv):
         self._linear_velocity_y_range = linear_velocity_y_range
         self._angular_velocity_range = angular_velocity_range
 
-        self._push_interval = push_interval
+        self._kick_interval = kick_interval
         self._resample_velocity_step = resample_velocity_step
 
         # observation configuration
@@ -204,7 +204,7 @@ class PupperV3Env(PipelineEnv):
         # kick
         kick_theta = jax.random.uniform(kick_noise_2, maxval=2 * jp.pi)
         kick = jp.array([jp.cos(kick_theta), jp.sin(kick_theta)])
-        kick *= jp.mod(state.info["step"], self._push_interval) == 0
+        kick *= jp.mod(state.info["step"], self._kick_interval) == 0
         qvel = state.pipeline_state.qvel  # pytype: disable=attribute-error
         qvel = qvel.at[:2].set(kick * self._kick_vel + qvel[:2])
         state = state.tree_replace({"pipeline_state.qvel": qvel})
