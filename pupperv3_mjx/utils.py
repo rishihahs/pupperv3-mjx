@@ -24,6 +24,20 @@ def progress(
     min_y: float,
     max_y: float,
 ):
+    """
+    Update and display a progress plot with error bars.
+
+    Args:
+    num_steps (int): The current number of steps in the environment.
+    metrics (dict): A dictionary containing evaluation metrics.
+    times (list): A list to append the current time.
+    x_data (list): A list to append the current number of steps.
+    y_data (list): A list to append the current episode reward.
+    ydataerr (list): A list to append the standard deviation of the episode reward.
+    num_timesteps (int): The total number of timesteps for the x-axis limit.
+    min_y (float): The minimum y-axis value.
+    max_y (float): The maximum y-axis value.
+    """
     times.append(datetime.now())
     x_data.append(num_steps)
     y_data.append(metrics["eval/episode_reward"])
@@ -43,7 +57,15 @@ def progress(
 
 
 def plot_multi_series(data, dt=1.0, display_axes=None, title=None):
-    # Create a Plotly figure to plot the three series
+    """
+    Plot multiple time series using Plotly.
+
+    Args:
+    data (numpy.ndarray): The data to plot, with each column representing a series.
+    dt (float): The time step between data points.
+    display_axes (list, optional): A list of indices of series to display by default.
+    title (str, optional): The title of the plot.
+    """
     fig = go.Figure()
     time_index = np.arange(len(data)) * dt
 
@@ -73,15 +95,15 @@ def plot_multi_series(data, dt=1.0, display_axes=None, title=None):
 
 def fuzzy_search(obj, search_str: str, cutoff: float = 0.6):
     """
-    Search through an object's properties and find those that match the search string in a fuzzy way.
+    Perform a fuzzy search on the properties of an object.
 
     Args:
     obj: The object to search through.
-    search_str: The string to match properties against.
-    cutoff: The cutoff for matching ratio (0.0 to 1.0), higher means more strict matching.
+    search_str (str): The string to match properties against.
+    cutoff (float): The cutoff for matching ratio (0.0 to 1.0), higher means more strict matching.
 
     Returns:
-    A list of tuples containing (property_name, match_ratio) that match the search string.
+    List[Tuple[str, float]]: A list of tuples containing (property_name, match_ratio) that match the search string.
     """
     results = []
 
@@ -101,6 +123,17 @@ def fuzzy_search(obj, search_str: str, cutoff: float = 0.6):
 
 
 def set_mjx_custom_options(tree: ET.ElementTree, max_contact_points: int, max_geom_pairs: int):
+    """
+    Set custom options for a MuJoCo XML model.
+
+    Args:
+    tree (ET.ElementTree): The XML tree of the MuJoCo model.
+    max_contact_points (int): The maximum number of contact points.
+    max_geom_pairs (int): The maximum number of geometry pairs.
+
+    Returns:
+    ET.ElementTree: The updated XML tree.
+    """
     root = tree.getroot()
     custom = root.find("custom")
     if custom is not None:
@@ -118,7 +151,17 @@ def set_mjx_custom_options(tree: ET.ElementTree, max_contact_points: int, max_ge
 def set_robot_starting_position(
     tree: ET.ElementTree, starting_pos: List, starting_quat: List = None
 ):
-    """Change the starting position of the robot in the xml mujoco model file"""
+    """
+    Change the starting position of the robot in the XML MuJoCo model file.
+
+    Args:
+    tree (ET.ElementTree): The XML tree of the MuJoCo model.
+    starting_pos (List[float]): The starting position [x, y, z].
+    starting_quat (List[float], optional): The starting quaternion [x, y, z, w].
+
+    Returns:
+    ET.ElementTree: The updated XML tree.
+    """
 
     body = tree.find(".//worldbody/body[@name='base_link']")
     body.set("pos", f"{starting_pos[0]} {starting_pos[1]} {starting_pos[2]}")
@@ -149,6 +192,22 @@ def visualize_policy(
     vy: float = 0.4,
     wz: float = 1.5,
 ):
+    """
+    Visualize a policy by creating a video of the robot's behavior.
+
+    Args:
+    current_step (int): The current training step.
+    make_policy_fn (Callable): A function to create the policy.
+    params (Tuple): The parameters for the policy.
+    eval_env: The evaluation environment.
+    jit_step (Callable): A JIT-compiled function to perform a step in the environment.
+    jit_reset (Callable): A JIT-compiled function to reset the environment.
+    output_folder (str): The folder to save the output video.
+    vx (float): The forward/backward velocity.
+    vy (float): The left/right velocity.
+    wz (float): The rotational velocity.
+    """
+
     inference_fn = make_policy_fn((params[0], params[1].policy))
     jit_inference_fn = jax.jit(inference_fn)
 
@@ -205,6 +264,15 @@ def visualize_policy(
 
 
 def activation_fn_map(activation_name: str):
+    """
+    Map an activation function name to its corresponding JAX function.
+
+    Args:
+    activation_name (str): The name of the activation function (e.g., 'relu', 'sigmoid').
+
+    Returns:
+    Callable: The corresponding JAX activation function.
+    """
     activation_name = activation_name.lower()
     return {
         "relu": jax.nn.relu,
