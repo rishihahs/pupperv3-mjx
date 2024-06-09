@@ -148,7 +148,7 @@ class PupperV3Env(PipelineEnv):
         self._terminal_body_angle = terminal_body_angle
 
         # desired orientation
-        self._desired_world_z_in_body_frame = desired_world_z_in_body_frame
+        self._desired_world_z_in_body_frame = jp.array(desired_world_z_in_body_frame)
 
     def sample_command(self, rng: jax.Array) -> jax.Array:
         lin_vel_x = self._linear_velocity_x_range  # min max [m/s]
