@@ -149,7 +149,7 @@ def visualize_policy(
     vy: float = 0.4,
     wz: float = 1.5,
 ):
-    inference_fn = make_policy_fn(params)
+    inference_fn = make_policy_fn((params[0], params[1].policy))
     jit_inference_fn = jax.jit(inference_fn)
 
     # Make robot go forward, back, left, right
