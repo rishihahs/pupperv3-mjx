@@ -12,6 +12,8 @@ def convert_params(
     params,
     activation: str,
     action_scale: float,
+    kp: float,
+    kd: float,
     default_pose: np.ndarray,
     upper_limits: np.ndarray,
     lower_limits: np.ndarray,
@@ -58,6 +60,8 @@ def convert_params(
     # Add action scale, default_pose, limits
     final_dict |= {
         "action_scale": action_scale,
+        "kp": kp,
+        "kd": kd,
         "default_pose": np.array(default_pose).tolist(),
         "upper_limits": np.array(upper_limits).tolist(),
         "lower_limits": np.array(lower_limits).tolist(),
