@@ -8,7 +8,15 @@ def fold_in_normalization(A, b, mean, std):
     return A_prime, b_prime
 
 
-def convert_params(params, activation: str, final_activation: str = "tanh"):
+def convert_params(
+    params,
+    activation: str,
+    action_scale: float,
+    default_pose: np.ndarray,
+    upper_limits: np.ndarray,
+    lower_limits: np.ndarray,
+    final_activation: str = "tanh",
+):
     mean, std = params[0].mean, params[0].std
     params_dict = params[1]["params"]
     layers = []
@@ -46,5 +54,13 @@ def convert_params(params, activation: str, final_activation: str = "tanh"):
 
     # Create the final dictionary
     final_dict = {"in_shape": [None, input_size], "layers": layers}
+
+    # Add action scale, default_pose, limits
+    final_dict |= {
+        "action_scale": action_scale,
+        "default_pose": np.array(default_pose).tolist(),
+        "upper_limits": np.array(upper_limits).tolist(),
+        "lower_limits": np.array(lower_limits).tolist(),
+    }
 
     return final_dict
