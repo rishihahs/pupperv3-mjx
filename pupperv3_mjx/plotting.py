@@ -1,5 +1,6 @@
 import plotly.graph_objects as go
 import numpy as np
+from scipy.signal import hilbert
 
 
 def plot_multi_series(data, dt=1.0, display_axes=None, title=None):
@@ -37,3 +38,25 @@ def plot_multi_series(data, dt=1.0, display_axes=None, title=None):
         legend=dict(title="Series"),
     )
     fig.show()
+
+
+def hilbert_transform(signal, fs):
+    """
+    Estimate amplitude, frequency, and phase using the Hilbert transform on the entire data.
+
+    Parameters:
+    signal (np.ndarray): The input signal array.
+    fs (int): The sampling frequency.
+
+    Returns:
+    np.ndarray: Arrays of estimated amplitudes, frequencies, and phases.
+    """
+    # Compute the analytic signal using Hilbert transform
+    analytic_signal = hilbert(signal)
+    instantaneous_amplitude = np.abs(analytic_signal)
+    instantaneous_phase = np.unwrap(np.angle(analytic_signal))
+    instantaneous_frequency = np.diff(instantaneous_phase) / (2.0 * np.pi * (1 / fs))
+    instantaneous_frequency = np.concatenate(
+        ([instantaneous_frequency[0]], instantaneous_frequency)
+    )
+    return instantaneous_amplitude, instantaneous_frequency, instantaneous_phase
