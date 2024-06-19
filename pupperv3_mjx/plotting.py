@@ -1,9 +1,10 @@
 import plotly.graph_objects as go
 import numpy as np
 from scipy.signal import hilbert
+from typing import List
 
 
-def plot_multi_series(data, dt=1.0, display_axes=None, title=None):
+def plot_multi_series(data, dt=1.0, display_axes=None, title=None, names: List = None):
     """
     Plot multiple time series using Plotly.
 
@@ -25,7 +26,7 @@ def plot_multi_series(data, dt=1.0, display_axes=None, title=None):
                 x=time_index,
                 y=data[:, i],
                 mode="lines",
-                name=f"Series {i}",
+                name=f"Series {i}" if names is None else names[i],
                 visible=True if i in display_axes else "legendonly",
             )
         )
