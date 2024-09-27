@@ -63,7 +63,7 @@ class PupperV3Env(PipelineEnv):
         reward_config,
         obs_noise: float = 0.05,
         kick_vel: float = 0.05,  # [m/s]
-        kick_interval: int = 10,
+        kick_probability: float = 0.04,  # Every 25 env steps on average
         terminal_body_z: float = 0.10,  # [m]
         early_termination_step_threshold: int = 500,
         terminal_body_angle: float = 0.52,  # [rad]
@@ -133,7 +133,7 @@ class PupperV3Env(PipelineEnv):
         self._linear_velocity_y_range = linear_velocity_y_range
         self._angular_velocity_range = angular_velocity_range
 
-        self._kick_interval = kick_interval
+        self._kick_probability = kick_probability
         self._resample_velocity_step = resample_velocity_step
 
         # observation configuration
@@ -199,14 +199,13 @@ class PupperV3Env(PipelineEnv):
         return state
 
     def step(self, state: State, action: jax.Array) -> State:  # pytype: disable=signature-mismatch
-        rng, cmd_rng, kick_noise_2 = jax.random.split(state.info["rng"], 3)
+        rng, cmd_rng, kick_noise_2, kick_bernoulli = jax.random.split(state.info["rng"], 4)
 
-        # kick
-        kick_theta = jax.random.uniform(kick_noise_2, maxval=2 * jp.pi)
-        kick = jp.array([jp.cos(kick_theta), jp.sin(kick_theta)])
-        kick *= jp.mod(state.info["step"], self._kick_interval) == 0
+        # Both whether to kick and the kick velocity are random
+        kick = jax.random.uniform(kick_noise_2, shape=(2,), minval=-1, maxval=1) * self._kick_vel
+        kick *= jax.random.bernoulli(kick_bernoulli, p=self._kick_probability, shape=(2,))
         qvel = state.pipeline_state.qvel  # pytype: disable=attribute-error
-        qvel = qvel.at[:2].set(kick * self._kick_vel + qvel[:2])
+        qvel = qvel.at[:2].set(kick + qvel[:2])
         state = state.tree_replace({"pipeline_state.qvel": qvel})
 
         # physics step
