@@ -1,26 +1,20 @@
-import numpy as np
-from typing import Callable, NamedTuple, Optional, Union, List
-
-# More legible printing from numpy.
-np.set_printoptions(precision=3, suppress=True, linewidth=100)
-
 from datetime import datetime
-import jax
-from jax import numpy as jp
-import numpy as np
-from typing import Any, Dict, Sequence, Tuple, Union
+from pathlib import Path
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
 
+import jax
+import mujoco
+import numpy as np
 from brax import base, math
 from brax.envs.base import PipelineEnv, State
 from brax.io import mjcf
-
-from pathlib import Path
-import mujoco
-
-from pupperv3_mjx import rewards, config
 from etils import epath
+from jax import numpy as jp
 
-from pupperv3_mjx import domain_randomization
+from pupperv3_mjx import config, domain_randomization, rewards, utils
+
+# More legible printing from numpy.
+np.set_printoptions(precision=3, suppress=True, linewidth=100)
 
 
 def body_names_to_body_ids(mj_model, body_names: List[str]) -> np.array:
@@ -62,17 +56,51 @@ class PupperV3Env(PipelineEnv):
         default_pose: jp.array,
         reward_config,
         obs_noise: float = 0.05,
-        kick_vel: float = 0.05,  # [m/s]
-        kick_probability: float = 0.04,  # Every 25 env steps on average
-        terminal_body_z: float = 0.10,  # [m]
+        kick_vel: float = 0.05,
+        kick_probability: float = 0.04,
+        terminal_body_z: float = 0.10,
         early_termination_step_threshold: int = 500,
-        terminal_body_angle: float = 0.52,  # [rad]
+        terminal_body_angle: float = 0.52,
         foot_radius: float = 0.02,
         environment_timestep: float = 0.02,
         physics_timestep: float = 0.004,
+        latency_timesteps: int = 1,
         desired_world_z_in_body_frame: jax.Array = jp.array([0.0, 0.0, 1.0]),
         **kwargs,
     ):
+        """
+        Args:
+            path (str): The path to the MJCF file.
+            action_scale (float): The scale to apply to actions.
+            observation_history (int): The number of previous observations to include in the state.
+            joint_lower_limits (List): The lower limits for the joint angles.
+            joint_upper_limits (List): The upper limits for the joint angles.
+            dof_damping (float): The damping to apply to the DOFs.
+            position_control_kp (float): The position control kp.
+            foot_site_names (List[str]): The names of the foot sites.
+            torso_name (str): The name of the torso.
+            upper_leg_body_names (List[str]): The names of the upper leg bodies.
+            lower_leg_body_names (List[str]): The names of the lower leg bodies.
+            resample_velocity_step (int): The number of steps to resample the velocity.
+            linear_velocity_x_range (Tuple): The range of linear velocity in the x-direction.
+            linear_velocity_y_range (Tuple): The range of linear velocity in the y-direction.
+            angular_velocity_range (Tuple): The range of angular velocity.
+            start_position_config (domain_randomization.StartPositionRandomization): The start position randomization config.
+            default_pose (jp.array): The default pose.
+            reward_config: The reward configuration.
+            obs_noise (float, optional): The observation noise. Default is 0.05.
+            kick_vel (float, optional): The kick velocity. [m/s] Default is 0.05.
+            kick_probability (float, optional): The kick probability. Default is 0.04.
+            terminal_body_z (float, optional): The terminal body z. Default is 0.10.
+            early_termination_step_threshold (int, optional): The early termination step threshold. Default is 500.
+            terminal_body_angle (float, optional): The terminal body angle. [rad]. Default is 0.52.
+            foot_radius (float, optional): The foot radius. Default is 0.02.
+            environment_timestep (float, optional): The environment timestep. Default is 0.02.
+            physics_timestep (float, optional): The physics timestep. Default is 0.004.
+            latency_timesteps (int, optional): The number of timesteps to delay actions.
+            desired_world_z_in_body_frame (jax.Array, optional): The desired world z in body frame. Default is [0.0, 0.0, 1.0].
+            kwargs: Additional keyword arguments.
+        """
         sys = mjcf.load(path)
         self._dt = environment_timestep  # this environment is 50 fps
         sys = sys.tree_replace({"opt.timestep": physics_timestep})
@@ -150,6 +178,9 @@ class PupperV3Env(PipelineEnv):
         # desired orientation
         self._desired_world_z_in_body_frame = jp.array(desired_world_z_in_body_frame)
 
+        # latency
+        self._latency_timesteps = latency_timesteps
+
     def sample_command(self, rng: jax.Array) -> jax.Array:
         lin_vel_x = self._linear_velocity_x_range  # min max [m/s]
         lin_vel_y = self._linear_velocity_y_range  # min max [m/s]
@@ -174,6 +205,7 @@ class PupperV3Env(PipelineEnv):
         state_info = {
             "rng": rng,
             "last_act": jp.zeros(12, dtype=float),
+            "action_buffer": jp.zeros((12, self._latency_timesteps), dtype=float),
             "last_vel": jp.zeros(12, dtype=float),
             "command": self.sample_command(sample_command_key),
             "last_contact": jp.zeros(4, dtype=bool),
@@ -209,7 +241,8 @@ class PupperV3Env(PipelineEnv):
         state = state.tree_replace({"pipeline_state.qvel": qvel})
 
         # physics step
-        motor_targets = self._default_pose + action * self._action_scale
+        delayed_action = state.info["action_buffer"][:, -1]
+        motor_targets = self._default_pose + delayed_action * self._action_scale
         motor_targets = jp.clip(motor_targets, self.lowers, self.uppers)
         pipeline_state = self.pipeline_step(state.pipeline_state, motor_targets)
         x, xd = pipeline_state.x, pipeline_state.xd
@@ -301,6 +334,12 @@ class PupperV3Env(PipelineEnv):
         # state management
         state.info["kick"] = kick
         state.info["last_act"] = action
+
+        # Update the action buffer used for delayed actions
+        state.info["action_buffer"] = utils.circular_buffer_shift_back(
+            state.info["action_buffer"], action
+        )
+
         state.info["last_vel"] = joint_vel
         state.info["feet_air_time"] *= ~contact_filt_mm
         state.info["last_contact"] = contact

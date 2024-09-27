@@ -60,6 +60,7 @@ def setup_environment():
 
     env_kwargs = dict(
         path=PATH.as_posix(),
+        latency_timesteps=2,
         action_scale=0.75,
         observation_history=2,
         joint_lower_limits=JOINT_LOWER_LIMITS,
@@ -94,6 +95,8 @@ def setup_environment():
             x_min=-1.0, x_max=1.0, y_min=-1.0, y_max=1.0, z_min=0.18, z_max=0.24
         ),
         reward_config=config.get_config(),
+        kick_vel=1.0,
+        kick_probability=0.04,
     )
 
     return env_kwargs
@@ -125,7 +128,8 @@ def test_pupper_environment(setup_environment):
     for i in range(n_steps):
         print("Step: ", i)
         act_rng, rng = jax.random.split(rng)
-        ctrl = jp.array(0.5 * np.random.uniform(low=-1.0, high=1.0, size=eval_env.sys.nu))
+        # ctrl = jp.array(0.5 * np.random.uniform(low=-1.0, high=1.0, size=eval_env.sys.nu))
+        ctrl = jp.ones(eval_env.sys.nu)
         state = jit_step(state, ctrl)
         rollout.append(state.pipeline_state)
         print(
