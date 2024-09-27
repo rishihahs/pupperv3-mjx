@@ -13,6 +13,18 @@ import jax
 from jax import numpy as jp
 
 
+def circular_buffer_shift_back(buffer: jax.Array, new_value: jax.Array) -> jax.Array:
+    """
+    Shift a circular buffer back by one step and set the last element to a new value.
+
+    Args:
+        buffer (jax.Array): The circular buffer.
+        new_value (jax.Array): The new value to set at the last index.
+    """
+    buffer = jp.roll(buffer, shift=-1, axis=1)
+    return buffer.at[:, -1].set(new_value)
+
+
 def progress(
     num_steps: int,
     metrics: dict,
@@ -54,43 +66,6 @@ def progress(
     plt.show()
 
     wandb.log(metrics, step=num_steps)
-
-
-def plot_multi_series(data, dt=1.0, display_axes=None, title=None):
-    """
-    Plot multiple time series using Plotly.
-
-    Args:
-    data (numpy.ndarray): The data to plot, with each column representing a series.
-    dt (float): The time step between data points.
-    display_axes (list, optional): A list of indices of series to display by default.
-    title (str, optional): The title of the plot.
-    """
-    fig = go.Figure()
-    time_index = np.arange(len(data)) * dt
-
-    if display_axes is None:
-        display_axes = list(range(data.shape[1]))
-
-    for i in range(data.shape[1]):
-        fig.add_trace(
-            go.Scatter(
-                x=time_index,
-                y=data[:, i],
-                mode="lines",
-                name=f"Series {i}",
-                visible=True if i in display_axes else "legendonly",
-            )
-        )
-
-    # Customize the layout with titles and axis labels
-    fig.update_layout(
-        title=title or "Time Series Visualization with Plotly",
-        xaxis=dict(title="Time"),
-        yaxis=dict(title="Value"),
-        legend=dict(title="Series"),
-    )
-    fig.show()
 
 
 def fuzzy_search(obj, search_str: str, cutoff: float = 0.6):
