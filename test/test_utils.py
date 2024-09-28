@@ -45,9 +45,9 @@ def test_invalid_activation():
         activation_fn_map("invalid")
 
 
-def test_circular_buffer_shift_back():
+def test_circular_buffer_push_back():
     buffer = jnp.array([[1, 2, 3], [4, 5, 6]])
     new_value = jnp.array([7, 8])
     expected_output = jnp.array([[2, 3, 7], [5, 6, 8]])
-    output = circular_buffer_shift_back(buffer, new_value)
+    output = circular_buffer_push_back(buffer, new_value)
     np.testing.assert_array_equal(output, expected_output)

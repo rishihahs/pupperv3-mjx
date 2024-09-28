@@ -64,7 +64,7 @@ class PupperV3Env(PipelineEnv):
         foot_radius: float,
         environment_timestep: float,
         physics_timestep: float,
-        latency_timesteps: int,
+        latency_distribution: jax.Array,
         desired_world_z_in_body_frame: jax.Array,
         use_imu: bool,
         **kwargs,
@@ -98,7 +98,7 @@ class PupperV3Env(PipelineEnv):
             foot_radius (float): The foot radius. Reasonable value is 0.02.
             environment_timestep (float): The environment timestep. Reasonable value is 0.02.
             physics_timestep (float): The physics timestep. Reasonable value is 0.004.
-            latency_timesteps (int): The number of timesteps to delay actions.
+            latency_distribution (jp.array): Probability distribution for action latency. First element corresponds to 0 latency. Shape: (N, 1)
             desired_world_z_in_body_frame (jax.Array): The desired world z in body frame. Reasonable value is [0.0, 0.0, 1.0].
             kwargs: Additional keyword arguments.
         """
@@ -120,6 +120,7 @@ class PupperV3Env(PipelineEnv):
         # sys.mj_model.keyframe('home').qpos = sys.mj_model.keyframe('home').qpos.at[7:].set(DEFAULT_POSE)
         sys.mj_model.keyframe("home").qpos[7:] = default_pose
 
+        # TODO(nathan-kau): Probably don't want to let n_frames override set timesteps
         n_frames = kwargs.pop("n_frames", int(self._dt / sys.opt.timestep))
         super().__init__(sys, backend="mjx", n_frames=n_frames)
 
@@ -180,7 +181,7 @@ class PupperV3Env(PipelineEnv):
         self._desired_world_z_in_body_frame = jp.array(desired_world_z_in_body_frame)
 
         # latency
-        self._latency_timesteps = latency_timesteps
+        self._latency_distribution = latency_distribution
 
         # whether to use imu
         self._use_imu = use_imu
@@ -209,7 +210,7 @@ class PupperV3Env(PipelineEnv):
         state_info = {
             "rng": rng,
             "last_act": jp.zeros(12, dtype=float),
-            "action_buffer": jp.zeros((12, self._latency_timesteps), dtype=float),
+            "action_buffer": jp.zeros((12, self._latency_distribution.shape[0]), dtype=float),
             "last_vel": jp.zeros(12, dtype=float),
             "command": self.sample_command(sample_command_key),
             "last_contact": jp.zeros(4, dtype=bool),
@@ -235,28 +236,43 @@ class PupperV3Env(PipelineEnv):
         return state
 
     def step(self, state: State, action: jax.Array) -> State:  # pytype: disable=signature-mismatch
-        rng, cmd_rng, kick_noise_2, kick_bernoulli = jax.random.split(state.info["rng"], 4)
+        rng, cmd_rng, kick_noise_2, kick_bernoulli, latency_key = jax.random.split(
+            state.info["rng"], 5
+        )
 
-        # Both whether to kick and the kick velocity are random
+        # Whether to kick and the kick velocity are both random
         kick = jax.random.uniform(kick_noise_2, shape=(2,), minval=-1, maxval=1) * self._kick_vel
         kick *= jax.random.bernoulli(kick_bernoulli, p=self._kick_probability, shape=(2,))
         qvel = state.pipeline_state.qvel  # pytype: disable=attribute-error
         qvel = qvel.at[:2].set(kick + qvel[:2])
         state = state.tree_replace({"pipeline_state.qvel": qvel})
 
-        # physics step
-        delayed_action = state.info["action_buffer"][:, -1]
-        motor_targets = self._default_pose + delayed_action * self._action_scale
+        # Handle action latency
+        # Put the current action at the end of the action buffer
+        # The action to take will be the first element of the buffer
+        state.info["action_buffer"] = utils.circular_buffer_push_back(
+            state.info["action_buffer"], action
+        )
+
+        # Pick from the action buffer by sampling from discrete distribution
+        # Note that actions may be acted on out of order if the buffer is more than 2 elements
+        action_buffer_idx = jax.random.choice(
+            latency_key, self._latency_distribution.shape[0], p=self._latency_distribution
+        )
+        action_to_take = state.info["action_buffer"][:, action_buffer_idx]
+
+        # Physics step
+        motor_targets = self._default_pose + action_to_take * self._action_scale
         motor_targets = jp.clip(motor_targets, self.lowers, self.uppers)
         pipeline_state = self.pipeline_step(state.pipeline_state, motor_targets)
         x, xd = pipeline_state.x, pipeline_state.xd
 
-        # observation data
+        # Observation data
         obs = self._get_obs(pipeline_state, state.info, state.obs)
         joint_angles = pipeline_state.q[7:]
         joint_vel = pipeline_state.qd[6:]
 
-        # foot contact data based on z-position
+        # Foot contact data based on z-position
         foot_pos = pipeline_state.site_xpos[self._feet_site_id]  # pytype: disable=attribute-error
         foot_contact_z = foot_pos[:, 2] - self._foot_radius
         contact = foot_contact_z < 1e-3  # a mm or less off the floor
@@ -265,7 +281,7 @@ class PupperV3Env(PipelineEnv):
         first_contact = (state.info["feet_air_time"] > 0) * contact_filt_mm
         state.info["feet_air_time"] += self.dt
 
-        # done if joint limits are reached or robot is falling
+        # Done if joint limits are reached or robot is falling
         up = jp.array([0.0, 0.0, 1.0])
         done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < np.cos(
             self._terminal_body_angle
@@ -274,7 +290,7 @@ class PupperV3Env(PipelineEnv):
         done |= jp.any(joint_angles > self.uppers)
         done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
 
-        # reward
+        # Reward
         rewards_dict = {
             "tracking_lin_vel": rewards.reward_tracking_lin_vel(
                 state.info["command"],
@@ -335,15 +351,9 @@ class PupperV3Env(PipelineEnv):
         }
         reward = jp.clip(sum(rewards_dict.values()) * self.dt, 0.0, 10000.0)
 
-        # state management
+        # State management
         state.info["kick"] = kick
         state.info["last_act"] = action
-
-        # Update the action buffer used for delayed actions
-        state.info["action_buffer"] = utils.circular_buffer_shift_back(
-            state.info["action_buffer"], action
-        )
-
         state.info["last_vel"] = joint_vel
         state.info["feet_air_time"] *= ~contact_filt_mm
         state.info["last_contact"] = contact
@@ -351,20 +361,20 @@ class PupperV3Env(PipelineEnv):
         state.info["step"] += 1
         state.info["rng"] = rng
 
-        # sample new command if more than 500 timesteps achieved
+        # Sample new command if more than 500 timesteps achieved
         state.info["command"] = jp.where(
             state.info["step"] > self._resample_velocity_step,
             self.sample_command(cmd_rng),
             state.info["command"],
         )
-        # reset the step counter when done
+        # Reset the step counter when done
         state.info["step"] = jp.where(
             done | (state.info["step"] > self._resample_velocity_step),
             0,
             state.info["step"],
         )
 
-        # log total displacement as a proxy metric
+        # Log total displacement as a proxy metric
         state.metrics["total_dist"] = math.normalize(x.pos[self._torso_idx - 1])[1]
         state.metrics.update(state.info["rewards"])
 
@@ -403,9 +413,9 @@ class PupperV3Env(PipelineEnv):
         )
 
         # stack observations through time
-        obs = jp.roll(obs_history, obs.size).at[: obs.size].set(obs)
+        new_obs_history = jp.roll(obs_history, obs.size).at[: obs.size].set(obs)
 
-        return obs
+        return new_obs_history
 
     def render(
         self, trajectory: List[base.State], camera: str | None = None

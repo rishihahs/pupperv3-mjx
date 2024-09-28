@@ -13,7 +13,7 @@ import jax
 from jax import numpy as jp
 
 
-def circular_buffer_shift_back(buffer: jax.Array, new_value: jax.Array) -> jax.Array:
+def circular_buffer_push_back(buffer: jax.Array, new_value: jax.Array) -> jax.Array:
     """
     Shift a circular buffer back by one step and set the last element to a new value.
 
@@ -65,7 +65,7 @@ def progress(
     plt.errorbar(x_data, y_data, yerr=ydataerr)
     plt.show()
 
-    wandb.log(metrics)  # , step=num_steps)
+    wandb.log(metrics, step=num_steps)
 
 
 def fuzzy_search(obj, search_str: str, cutoff: float = 0.6):
@@ -234,7 +234,7 @@ def visualize_policy(
             "eval/video/command/wz": wz,
             "eval/video": wandb.Video(filename, format="mp4", fps=fps),
         },
-        # step=current_step,
+        step=current_step,
     )
 
 
