@@ -55,17 +55,18 @@ class PupperV3Env(PipelineEnv):
         start_position_config: domain_randomization.StartPositionRandomization,
         default_pose: jp.array,
         reward_config,
-        obs_noise: float = 0.05,
-        kick_vel: float = 0.05,
-        kick_probability: float = 0.04,
-        terminal_body_z: float = 0.10,
-        early_termination_step_threshold: int = 500,
-        terminal_body_angle: float = 0.52,
-        foot_radius: float = 0.02,
-        environment_timestep: float = 0.02,
-        physics_timestep: float = 0.004,
-        latency_timesteps: int = 1,
-        desired_world_z_in_body_frame: jax.Array = jp.array([0.0, 0.0, 1.0]),
+        obs_noise: float,
+        kick_vel: float,
+        kick_probability: float,
+        terminal_body_z: float,
+        early_termination_step_threshold: int,
+        terminal_body_angle: float,
+        foot_radius: float,
+        environment_timestep: float,
+        physics_timestep: float,
+        latency_timesteps: int,
+        desired_world_z_in_body_frame: jax.Array,
+        use_imu: bool,
         **kwargs,
     ):
         """
@@ -88,17 +89,17 @@ class PupperV3Env(PipelineEnv):
             start_position_config (domain_randomization.StartPositionRandomization): The start position randomization config.
             default_pose (jp.array): The default pose.
             reward_config: The reward configuration.
-            obs_noise (float, optional): The observation noise. Default is 0.05.
-            kick_vel (float, optional): The kick velocity. [m/s] Default is 0.05.
-            kick_probability (float, optional): The kick probability. Default is 0.04.
-            terminal_body_z (float, optional): The terminal body z. Default is 0.10.
-            early_termination_step_threshold (int, optional): The early termination step threshold. Default is 500.
-            terminal_body_angle (float, optional): The terminal body angle. [rad]. Default is 0.52.
-            foot_radius (float, optional): The foot radius. Default is 0.02.
-            environment_timestep (float, optional): The environment timestep. Default is 0.02.
-            physics_timestep (float, optional): The physics timestep. Default is 0.004.
-            latency_timesteps (int, optional): The number of timesteps to delay actions.
-            desired_world_z_in_body_frame (jax.Array, optional): The desired world z in body frame. Default is [0.0, 0.0, 1.0].
+            obs_noise (float): The observation noise. Reasonable value is 0.05.
+            kick_vel (float): The kick velocity. [m/s] Reasonable value is 0.05.
+            kick_probability (float): The kick probability. Reasonable value is 0.04.
+            terminal_body_z (float): The terminal body z. Reasonable value is 0.10.
+            early_termination_step_threshold (int): The early termination step threshold. Reasonable value is 500.
+            terminal_body_angle (float): The terminal body angle. [rad]. Reasonable value is 0.52.
+            foot_radius (float): The foot radius. Reasonable value is 0.02.
+            environment_timestep (float): The environment timestep. Reasonable value is 0.02.
+            physics_timestep (float): The physics timestep. Reasonable value is 0.004.
+            latency_timesteps (int): The number of timesteps to delay actions.
+            desired_world_z_in_body_frame (jax.Array): The desired world z in body frame. Reasonable value is [0.0, 0.0, 1.0].
             kwargs: Additional keyword arguments.
         """
         sys = mjcf.load(path)
@@ -180,6 +181,9 @@ class PupperV3Env(PipelineEnv):
 
         # latency
         self._latency_timesteps = latency_timesteps
+
+        # whether to use imu
+        self._use_imu = use_imu
 
     def sample_command(self, rng: jax.Array) -> jax.Array:
         lin_vel_x = self._linear_velocity_x_range  # min max [m/s]
@@ -374,8 +378,12 @@ class PupperV3Env(PipelineEnv):
         state_info: dict[str, Any],
         obs_history: jax.Array,
     ) -> jax.Array:
-        inv_torso_rot = math.quat_inv(pipeline_state.x.rot[0])
-        local_body_angular_velocity = math.rotate(pipeline_state.xd.ang[0], inv_torso_rot)
+        if self._use_imu:
+            inv_torso_rot = math.quat_inv(pipeline_state.x.rot[0])
+            local_body_angular_velocity = math.rotate(pipeline_state.xd.ang[0], inv_torso_rot)
+        else:
+            inv_torso_rot = jp.array([1, 0, 0, 0])
+            local_body_angular_velocity = jp.zeros(3)
 
         obs = jp.concatenate(
             [
