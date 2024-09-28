@@ -65,7 +65,7 @@ def progress(
     plt.errorbar(x_data, y_data, yerr=ydataerr)
     plt.show()
 
-    wandb.log(metrics, step=num_steps)
+    wandb.log(metrics)  # , step=num_steps)
 
 
 def fuzzy_search(obj, search_str: str, cutoff: float = 0.6):
@@ -234,7 +234,7 @@ def visualize_policy(
             "eval/video/command/wz": wz,
             "eval/video": wandb.Video(filename, format="mp4", fps=fps),
         },
-        step=current_step,
+        # step=current_step,
     )
 
 
