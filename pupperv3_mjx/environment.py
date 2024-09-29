@@ -395,6 +395,8 @@ class PupperV3Env(PipelineEnv):
             inv_torso_rot = jp.array([1, 0, 0, 0])
             local_body_angular_velocity = jp.zeros(3)
 
+        # TODO: add noise for each component
+        # See https://arxiv.org/abs/2202.05481 for magnitudes
         obs = jp.concatenate(
             [
                 local_body_angular_velocity,  # angular velocity
