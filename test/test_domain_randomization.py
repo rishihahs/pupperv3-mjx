@@ -9,8 +9,6 @@ import jax
 from pathlib import Path
 
 from jax import random
-from unittest.mock import MagicMock
-import os
 from brax.io import mjcf
 
 
@@ -34,11 +32,7 @@ def test_randomize_qpos():
 
 def test_domain_randomize():
     # Create a mock sys object with necessary attributes
-    ORIGINAL_MODEL_PATH = Path(
-        os.path.expanduser(
-            "~/pupper_v3_description/description/mujoco_xml/pupper_v3_complete.mjx.position.xml"
-        )
-    )
+    ORIGINAL_MODEL_PATH = Path("test/test_pupper_model.xml")
 
     sys = mjcf.load(ORIGINAL_MODEL_PATH)
 
@@ -66,7 +60,7 @@ def test_domain_randomize():
     )
 
     # Check if the output sys has the attributes updated correctly
-    assert sys.geom_friction.shape == (10, 24, 3)
+    assert sys.geom_friction.shape == (10, 11, 3)
     assert sys.actuator_gainprm.shape == (10, 12, 10)
     assert sys.actuator_biasprm.shape == (10, 12, 10)
 
@@ -82,14 +76,14 @@ def test_domain_randomize():
     ).all()
 
     # Test body inertia changed
-    # assert (sys.body_inertia[:, 1] >= 1.5 * original_body_inertia).all() and (
-    #     sys.body_inertia[:, 1] <= 2.0 * original_body_inertia
-    # ).all()
+    assert (sys.body_inertia[:, 1] >= 1.5 * original_body_inertia).all() and (
+        sys.body_inertia[:, 1] <= 2.0 * original_body_inertia
+    ).all()
 
     # # Test body com changed
-    # assert (sys.body_ipos[:, 1] - original_body_com >= 0.02).all() and (
-    #     sys.body_ipos[:, 1] - original_body_com <= 0.04
-    # ).all()
+    assert (sys.body_ipos[:, 1] - original_body_com >= 0.02).all() and (
+        sys.body_ipos[:, 1] - original_body_com <= 0.04
+    ).all()
 
 
 if __name__ == "__main__":

@@ -1,30 +1,24 @@
+from typing import Any, Dict, List, Sequence, Tuple
+
+import jax
+import mujoco
 import numpy as np
-from typing import Callable, NamedTuple, Optional, Union, List
+from brax import base, math
+from brax.envs.base import PipelineEnv, State
+from brax.io import mjcf
+from jax import numpy as jp
+
+from pupperv3_mjx import domain_randomization, rewards, utils
 
 # More legible printing from numpy.
 np.set_printoptions(precision=3, suppress=True, linewidth=100)
 
-from datetime import datetime
-import jax
-from jax import numpy as jp
-import numpy as np
-from typing import Any, Dict, Sequence, Tuple, Union
-
-from brax import base, math
-from brax.envs.base import PipelineEnv, State
-from brax.io import mjcf
-
-from pathlib import Path
-import mujoco
-
-from pupperv3_mjx import rewards, config
-from etils import epath
-
-from pupperv3_mjx import domain_randomization
-
 
 def body_names_to_body_ids(mj_model, body_names: List[str]) -> np.array:
-    body_ids = [mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY.value, l) for l in body_names]
+    body_ids = [
+        mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY.value, body_name)
+        for body_name in body_names
+    ]
     assert not any(id_ == -1 for id_ in body_ids), "Body not found."
     return np.array(body_ids)
 
@@ -44,35 +38,119 @@ class PupperV3Env(PipelineEnv):
     def __init__(
         self,
         path: str,
+        reward_config: Dict,
         action_scale: float,
         observation_history: int,
-        joint_lower_limits: List,
-        joint_upper_limits: List,
-        dof_damping: float,
-        position_control_kp: float,
-        foot_site_names: List[str],
-        torso_name: str,
-        upper_leg_body_names: List[str],
-        lower_leg_body_names: List[str],
-        resample_velocity_step: int,
-        linear_velocity_x_range: Tuple,
-        linear_velocity_y_range: Tuple,
-        angular_velocity_range: Tuple,
-        start_position_config: domain_randomization.StartPositionRandomization,
-        default_pose: jp.array,
-        reward_config,
-        obs_noise: float = 0.05,
-        kick_vel: float = 0.05,  # [m/s]
-        kick_probability: float = 0.04,  # Every 25 env steps on average
-        terminal_body_z: float = 0.10,  # [m]
+        joint_lower_limits: List = [
+            -1.220,
+            -0.420,
+            -2.790,
+            -2.510,
+            -3.140,
+            -0.710,
+            -1.220,
+            -0.420,
+            -2.790,
+            -2.510,
+            -3.140,
+            -0.710,
+        ],
+        joint_upper_limits: List = [
+            2.510,
+            3.140,
+            0.710,
+            1.220,
+            0.420,
+            2.790,
+            2.510,
+            3.140,
+            0.710,
+            1.220,
+            0.420,
+            2.790,
+        ],
+        dof_damping: float = 0.25,
+        position_control_kp: float = 5.0,
+        start_position_config: domain_randomization.StartPositionRandomization = (
+            domain_randomization.StartPositionRandomization(
+                x_min=-2.0, x_max=2.0, y_min=-2.0, y_max=2.0, z_min=0.15, z_max=0.20
+            )
+        ),
+        foot_site_names: List[str] = [
+            "leg_front_r_3_foot_site",
+            "leg_front_l_3_foot_site",
+            "leg_back_r_3_foot_site",
+            "leg_back_l_3_foot_site",
+        ],
+        torso_name: str = "base_link",
+        upper_leg_body_names: List[str] = [
+            "leg_front_r_2",
+            "leg_front_l_2",
+            "leg_back_r_2",
+            "leg_back_l_2",
+        ],
+        lower_leg_body_names: List[str] = [
+            "leg_front_r_3",
+            "leg_front_l_3",
+            "leg_back_r_3",
+            "leg_back_l_3",
+        ],
+        resample_velocity_step: int = 500,
+        linear_velocity_x_range: Tuple = (-0.75, 0.75),
+        linear_velocity_y_range: Tuple = (-0.5, 0.5),
+        angular_velocity_range: Tuple = (-2.0, 2.0),
+        default_pose: jp.array = jp.array(
+            [0.26, 0.0, -0.52, -0.26, 0.0, 0.52, 0.26, 0.0, -0.52, -0.26, 0.0, 0.52]
+        ),
+        obs_noise: float = 0.1,
+        kick_vel: float = 0.2,
+        kick_probability: float = 0.02,
+        terminal_body_z: float = 0.1,
         early_termination_step_threshold: int = 500,
-        terminal_body_angle: float = 0.52,  # [rad]
+        terminal_body_angle: float = 0.52,
         foot_radius: float = 0.02,
         environment_timestep: float = 0.02,
         physics_timestep: float = 0.004,
+        latency_distribution: jax.Array = jp.array([0.2, 0.8]),
         desired_world_z_in_body_frame: jax.Array = jp.array([0.0, 0.0, 1.0]),
-        **kwargs,
+        use_imu: bool = True,
     ):
+        """
+        Args:
+            path (str): The path to the MJCF file.
+            action_scale (float): The scale to apply to actions.
+            observation_history (int): The number of previous observations to include in the state.
+            joint_lower_limits (List): The lower limits for the joint angles.
+            joint_upper_limits (List): The upper limits for the joint angles.
+            dof_damping (float): The damping to apply to the DOFs.
+            position_control_kp (float): The position control kp.
+            foot_site_names (List[str]): The names of the foot sites.
+            torso_name (str): The name of the torso.
+            upper_leg_body_names (List[str]): The names of the upper leg bodies.
+            lower_leg_body_names (List[str]): The names of the lower leg bodies.
+            resample_velocity_step (int): The number of steps to resample the velocity.
+            linear_velocity_x_range (Tuple): The range of linear velocity in the x-direction.
+            linear_velocity_y_range (Tuple): The range of linear velocity in the y-direction.
+            angular_velocity_range (Tuple): The range of angular velocity.
+            start_position_config (domain_randomization.StartPositionRandomization):
+            The start position randomization config.
+            default_pose (jp.array): The default pose.
+            reward_config: The reward configuration.
+            obs_noise (float): The observation noise. Reasonable value is 0.05.
+            kick_vel (float): The kick velocity. [m/s] Reasonable value is 0.05.
+            kick_probability (float): The kick probability. Reasonable value is 0.04.
+            terminal_body_z (float): The terminal body z. Reasonable value is 0.10.
+            early_termination_step_threshold (int): The early termination step threshold.
+            Reasonable value is 500.
+            terminal_body_angle (float): The terminal body angle. [rad]. Reasonable value is 0.52.
+            foot_radius (float): The foot radius. Reasonable value is 0.02.
+            environment_timestep (float): The environment timestep. Reasonable value is 0.02.
+            physics_timestep (float): The physics timestep. Reasonable value is 0.004.
+            latency_distribution (jp.array): Probability distribution for action latency.
+            First element corresponds to 0 latency. Shape: (N, 1)
+            desired_world_z_in_body_frame (jax.Array): The desired world z in body frame.
+            Reasonable value is [0.0, 0.0, 1.0].
+        """
         sys = mjcf.load(path)
         self._dt = environment_timestep  # this environment is 50 fps
         sys = sys.tree_replace({"opt.timestep": physics_timestep})
@@ -87,19 +165,13 @@ class PupperV3Env(PipelineEnv):
             .set(-dof_damping),
         )
 
-        # override the default joint angles with DEFAULT_POSE
-        # sys.mj_model.keyframe('home').qpos = sys.mj_model.keyframe('home').qpos.at[7:].set(DEFAULT_POSE)
+        # override the default joint angles with default_pose
         sys.mj_model.keyframe("home").qpos[7:] = default_pose
 
-        n_frames = kwargs.pop("n_frames", int(self._dt / sys.opt.timestep))
+        n_frames = self._dt // sys.opt.timestep
         super().__init__(sys, backend="mjx", n_frames=n_frames)
 
         self._reward_config = reward_config
-        # set custom from kwargs
-        for k, v in kwargs.items():
-            if k.endswith("_scale"):
-                self._reward_config.rewards.scales[k[:-6]] = v
-
         self._torso_geom_ids = body_name_to_geom_ids(sys.mj_model, torso_name)
         self._torso_idx = mujoco.mj_name2id(
             sys.mj_model, mujoco.mjtObj.mjOBJ_BODY.value, torso_name
@@ -150,6 +222,12 @@ class PupperV3Env(PipelineEnv):
         # desired orientation
         self._desired_world_z_in_body_frame = jp.array(desired_world_z_in_body_frame)
 
+        # latency
+        self._latency_distribution = latency_distribution
+
+        # whether to use imu
+        self._use_imu = use_imu
+
     def sample_command(self, rng: jax.Array) -> jax.Array:
         lin_vel_x = self._linear_velocity_x_range  # min max [m/s]
         lin_vel_y = self._linear_velocity_y_range  # min max [m/s]
@@ -174,6 +252,7 @@ class PupperV3Env(PipelineEnv):
         state_info = {
             "rng": rng,
             "last_act": jp.zeros(12, dtype=float),
+            "action_buffer": jp.zeros((12, self._latency_distribution.shape[0]), dtype=float),
             "last_vel": jp.zeros(12, dtype=float),
             "command": self.sample_command(sample_command_key),
             "last_contact": jp.zeros(4, dtype=bool),
@@ -199,27 +278,43 @@ class PupperV3Env(PipelineEnv):
         return state
 
     def step(self, state: State, action: jax.Array) -> State:  # pytype: disable=signature-mismatch
-        rng, cmd_rng, kick_noise_2, kick_bernoulli = jax.random.split(state.info["rng"], 4)
+        rng, cmd_rng, kick_noise_2, kick_bernoulli, latency_key = jax.random.split(
+            state.info["rng"], 5
+        )
 
-        # Both whether to kick and the kick velocity are random
+        # Whether to kick and the kick velocity are both random
         kick = jax.random.uniform(kick_noise_2, shape=(2,), minval=-1, maxval=1) * self._kick_vel
         kick *= jax.random.bernoulli(kick_bernoulli, p=self._kick_probability, shape=(2,))
         qvel = state.pipeline_state.qvel  # pytype: disable=attribute-error
         qvel = qvel.at[:2].set(kick + qvel[:2])
         state = state.tree_replace({"pipeline_state.qvel": qvel})
 
-        # physics step
-        motor_targets = self._default_pose + action * self._action_scale
+        # Handle action latency
+        # Put the current action at the end of the action buffer
+        # The action to take will be the first element of the buffer
+        state.info["action_buffer"] = utils.circular_buffer_push_back(
+            state.info["action_buffer"], action
+        )
+
+        # Pick from the action buffer by sampling from discrete distribution
+        # Note that actions may be acted on out of order if the buffer is more than 2 elements
+        action_buffer_idx = jax.random.choice(
+            latency_key, self._latency_distribution.shape[0], p=self._latency_distribution
+        )
+        action_to_take = state.info["action_buffer"][:, action_buffer_idx]
+
+        # Physics step
+        motor_targets = self._default_pose + action_to_take * self._action_scale
         motor_targets = jp.clip(motor_targets, self.lowers, self.uppers)
         pipeline_state = self.pipeline_step(state.pipeline_state, motor_targets)
         x, xd = pipeline_state.x, pipeline_state.xd
 
-        # observation data
+        # Observation data
         obs = self._get_obs(pipeline_state, state.info, state.obs)
         joint_angles = pipeline_state.q[7:]
         joint_vel = pipeline_state.qd[6:]
 
-        # foot contact data based on z-position
+        # Foot contact data based on z-position
         foot_pos = pipeline_state.site_xpos[self._feet_site_id]  # pytype: disable=attribute-error
         foot_contact_z = foot_pos[:, 2] - self._foot_radius
         contact = foot_contact_z < 1e-3  # a mm or less off the floor
@@ -228,7 +323,7 @@ class PupperV3Env(PipelineEnv):
         first_contact = (state.info["feet_air_time"] > 0) * contact_filt_mm
         state.info["feet_air_time"] += self.dt
 
-        # done if joint limits are reached or robot is falling
+        # Done if joint limits are reached or robot is falling
         up = jp.array([0.0, 0.0, 1.0])
         done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < np.cos(
             self._terminal_body_angle
@@ -237,7 +332,7 @@ class PupperV3Env(PipelineEnv):
         done |= jp.any(joint_angles > self.uppers)
         done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
 
-        # reward
+        # Reward
         rewards_dict = {
             "tracking_lin_vel": rewards.reward_tracking_lin_vel(
                 state.info["command"],
@@ -298,7 +393,7 @@ class PupperV3Env(PipelineEnv):
         }
         reward = jp.clip(sum(rewards_dict.values()) * self.dt, 0.0, 10000.0)
 
-        # state management
+        # State management
         state.info["kick"] = kick
         state.info["last_act"] = action
         state.info["last_vel"] = joint_vel
@@ -308,20 +403,20 @@ class PupperV3Env(PipelineEnv):
         state.info["step"] += 1
         state.info["rng"] = rng
 
-        # sample new command if more than 500 timesteps achieved
+        # Sample new command if more than 500 timesteps achieved
         state.info["command"] = jp.where(
             state.info["step"] > self._resample_velocity_step,
             self.sample_command(cmd_rng),
             state.info["command"],
         )
-        # reset the step counter when done
+        # Reset the step counter when done
         state.info["step"] = jp.where(
             done | (state.info["step"] > self._resample_velocity_step),
             0,
             state.info["step"],
         )
 
-        # log total displacement as a proxy metric
+        # Log total displacement as a proxy metric
         state.metrics["total_dist"] = math.normalize(x.pos[self._torso_idx - 1])[1]
         state.metrics.update(state.info["rewards"])
 
@@ -335,9 +430,15 @@ class PupperV3Env(PipelineEnv):
         state_info: dict[str, Any],
         obs_history: jax.Array,
     ) -> jax.Array:
-        inv_torso_rot = math.quat_inv(pipeline_state.x.rot[0])
-        local_body_angular_velocity = math.rotate(pipeline_state.xd.ang[0], inv_torso_rot)
+        if self._use_imu:
+            inv_torso_rot = math.quat_inv(pipeline_state.x.rot[0])
+            local_body_angular_velocity = math.rotate(pipeline_state.xd.ang[0], inv_torso_rot)
+        else:
+            inv_torso_rot = jp.array([1, 0, 0, 0])
+            local_body_angular_velocity = jp.zeros(3)
 
+        # TODO: add noise for each component
+        # See https://arxiv.org/abs/2202.05481 for magnitudes
         obs = jp.concatenate(
             [
                 local_body_angular_velocity,  # angular velocity
@@ -356,9 +457,9 @@ class PupperV3Env(PipelineEnv):
         )
 
         # stack observations through time
-        obs = jp.roll(obs_history, obs.size).at[: obs.size].set(obs)
+        new_obs_history = jp.roll(obs_history, obs.size).at[: obs.size].set(obs)
 
-        return obs
+        return new_obs_history
 
     def render(
         self, trajectory: List[base.State], camera: str | None = None

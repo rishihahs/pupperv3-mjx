@@ -2,7 +2,7 @@ import pytest
 import jax
 from jax import numpy as jnp
 import numpy as np
-from pupperv3_mjx.utils import activation_fn_map
+from pupperv3_mjx.utils import activation_fn_map, circular_buffer_push_back
 
 
 def test_relu():
@@ -43,3 +43,11 @@ def test_softmax():
 def test_invalid_activation():
     with pytest.raises(KeyError):
         activation_fn_map("invalid")
+
+
+def test_circular_buffer_push_back():
+    buffer = jnp.array([[1, 2, 3], [4, 5, 6]])
+    new_value = jnp.array([7, 8])
+    expected_output = jnp.array([[2, 3, 7], [5, 6, 8]])
+    output = circular_buffer_push_back(buffer, new_value)
+    np.testing.assert_array_equal(output, expected_output)
