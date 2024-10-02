@@ -9,9 +9,7 @@ import xml.etree.ElementTree as ET
 
 
 def test_set_starting_position():
-    ORIGINAL_MODEL_PATH = Path(
-        "/Users/nathankau/pupper_v3_description/description/mujoco_xml/pupper_v3_complete.mjx.position.xml"
-    )
+    ORIGINAL_MODEL_PATH = Path("test/test_pupper_model.xml")
 
     xml_str = ORIGINAL_MODEL_PATH.read_text()
     tree = ET.ElementTree(ET.fromstring(xml_str))
