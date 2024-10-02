@@ -60,7 +60,6 @@ def setup_environment():
 
     env_kwargs = dict(
         path=PATH.as_posix(),
-        latency_timesteps=2,
         action_scale=0.75,
         observation_history=2,
         joint_lower_limits=JOINT_LOWER_LIMITS,
@@ -97,6 +96,8 @@ def setup_environment():
         reward_config=config.get_config(),
         kick_vel=1.0,
         kick_probability=0.04,
+        terminal_body_z=0.1,
+        early_termination_step_threshold=500,
     )
 
     return env_kwargs
