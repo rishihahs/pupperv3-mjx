@@ -2,7 +2,7 @@ import pytest
 import jax
 from jax import numpy as jnp
 import numpy as np
-from pupperv3_mjx.utils import activation_fn_map, circular_buffer_shift_back
+from pupperv3_mjx.utils import activation_fn_map, circular_buffer_push_back
 
 
 def test_relu():
