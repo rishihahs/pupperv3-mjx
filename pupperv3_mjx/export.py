@@ -41,7 +41,8 @@ def convert_params(
         kernel_list = kernel.tolist()
 
         # Determine the input shape from the kernel shape
-        input_shape = len(kernel_list[0])
+        # TODO: Determine whether this is necessary
+        # input_shape = len(kernel_list[0])
 
         # Create layer dictionary
         layer_dict = {

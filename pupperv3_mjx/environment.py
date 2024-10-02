@@ -1,6 +1,4 @@
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Sequence, Tuple
 
 import jax
 import mujoco
@@ -8,17 +6,19 @@ import numpy as np
 from brax import base, math
 from brax.envs.base import PipelineEnv, State
 from brax.io import mjcf
-from etils import epath
 from jax import numpy as jp
 
-from pupperv3_mjx import config, domain_randomization, rewards, utils
+from pupperv3_mjx import domain_randomization, rewards, utils
 
 # More legible printing from numpy.
 np.set_printoptions(precision=3, suppress=True, linewidth=100)
 
 
 def body_names_to_body_ids(mj_model, body_names: List[str]) -> np.array:
-    body_ids = [mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY.value, l) for l in body_names]
+    body_ids = [
+        mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_BODY.value, body_name)
+        for body_name in body_names
+    ]
     assert not any(id_ == -1 for id_ in body_ids), "Body not found."
     return np.array(body_ids)
 
@@ -71,8 +71,10 @@ class PupperV3Env(PipelineEnv):
         ],
         dof_damping: float = 0.25,
         position_control_kp: float = 5.0,
-        start_position_config: domain_randomization.StartPositionRandomization = domain_randomization.StartPositionRandomization(
-            x_min=-2.0, x_max=2.0, y_min=-2.0, y_max=2.0, z_min=0.15, z_max=0.20
+        start_position_config: domain_randomization.StartPositionRandomization = (
+            domain_randomization.StartPositionRandomization(
+                x_min=-2.0, x_max=2.0, y_min=-2.0, y_max=2.0, z_min=0.15, z_max=0.20
+            )
         ),
         foot_site_names: List[str] = [
             "leg_front_r_3_foot_site",
@@ -130,20 +132,24 @@ class PupperV3Env(PipelineEnv):
             linear_velocity_x_range (Tuple): The range of linear velocity in the x-direction.
             linear_velocity_y_range (Tuple): The range of linear velocity in the y-direction.
             angular_velocity_range (Tuple): The range of angular velocity.
-            start_position_config (domain_randomization.StartPositionRandomization): The start position randomization config.
+            start_position_config (domain_randomization.StartPositionRandomization):
+            The start position randomization config.
             default_pose (jp.array): The default pose.
             reward_config: The reward configuration.
             obs_noise (float): The observation noise. Reasonable value is 0.05.
             kick_vel (float): The kick velocity. [m/s] Reasonable value is 0.05.
             kick_probability (float): The kick probability. Reasonable value is 0.04.
             terminal_body_z (float): The terminal body z. Reasonable value is 0.10.
-            early_termination_step_threshold (int): The early termination step threshold. Reasonable value is 500.
+            early_termination_step_threshold (int): The early termination step threshold.
+            Reasonable value is 500.
             terminal_body_angle (float): The terminal body angle. [rad]. Reasonable value is 0.52.
             foot_radius (float): The foot radius. Reasonable value is 0.02.
             environment_timestep (float): The environment timestep. Reasonable value is 0.02.
             physics_timestep (float): The physics timestep. Reasonable value is 0.004.
-            latency_distribution (jp.array): Probability distribution for action latency. First element corresponds to 0 latency. Shape: (N, 1)
-            desired_world_z_in_body_frame (jax.Array): The desired world z in body frame. Reasonable value is [0.0, 0.0, 1.0].
+            latency_distribution (jp.array): Probability distribution for action latency.
+            First element corresponds to 0 latency. Shape: (N, 1)
+            desired_world_z_in_body_frame (jax.Array): The desired world z in body frame.
+            Reasonable value is [0.0, 0.0, 1.0].
         """
         sys = mjcf.load(path)
         self._dt = environment_timestep  # this environment is 50 fps
@@ -159,8 +165,7 @@ class PupperV3Env(PipelineEnv):
             .set(-dof_damping),
         )
 
-        # override the default joint angles with DEFAULT_POSE
-        # sys.mj_model.keyframe('home').qpos = sys.mj_model.keyframe('home').qpos.at[7:].set(DEFAULT_POSE)
+        # override the default joint angles with default_pose
         sys.mj_model.keyframe("home").qpos[7:] = default_pose
 
         n_frames = self._dt // sys.opt.timestep

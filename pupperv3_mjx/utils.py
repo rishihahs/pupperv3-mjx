@@ -1,8 +1,6 @@
 from datetime import datetime
 import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 import difflib
-import numpy as np
 import re
 import xml.etree.ElementTree as ET
 from typing import List, Callable
@@ -78,7 +76,8 @@ def fuzzy_search(obj, search_str: str, cutoff: float = 0.6):
     cutoff (float): The cutoff for matching ratio (0.0 to 1.0), higher means more strict matching.
 
     Returns:
-    List[Tuple[str, float]]: A list of tuples containing (property_name, match_ratio) that match the search string.
+    List[Tuple[str, float]]: A list of tuples containing (property_name, match_ratio) that match
+    the search string.
     """
     results = []
 

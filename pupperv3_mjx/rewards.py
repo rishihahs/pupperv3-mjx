@@ -2,7 +2,7 @@ import jax
 import math
 from jax import numpy as jp
 from brax.base import Motion, Transform
-from brax import base, math
+from brax import base
 import numpy as np
 
 

@@ -3,15 +3,14 @@ pytest -s test/test_environment.py
 """
 
 import pytest
-from pupperv3_mjx import environment, domain_randomization, utils, config, obstacles
+from pupperv3_mjx import environment, domain_randomization, config, obstacles
 import jax
 from jax import numpy as jp
-import numpy as np
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import mediapy as media
 import os
-from brax.io import html, mjcf, model
+from brax.io import mjcf
 
 
 @pytest.fixture(scope="module")
@@ -106,8 +105,8 @@ def setup_environment():
 def test_pupper_environment(setup_environment):
     env_kwargs = setup_environment
 
-    # Reset environments since internals may be overwritten by tracers from the domain randomization function.
-    env = environment.PupperV3Env(**env_kwargs)
+    # Reset environments since internals may be overwritten by tracers from the
+    # domain randomization function.
     eval_env = environment.PupperV3Env(**env_kwargs)
 
     # Initialize the state
