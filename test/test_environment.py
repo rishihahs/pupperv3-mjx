@@ -15,17 +15,8 @@ from brax.io import mjcf
 
 @pytest.fixture(scope="module")
 def setup_environment():
-    ORIGINAL_MODEL_PATH = Path(
-        os.path.expanduser(
-            "~/pupper_v3_description/description/mujoco_xml/pupper_v3_complete.mjx.position.xml"
-        )
-    )
-
-    PATH = Path(
-        os.path.expanduser(
-            "~/pupper_v3_description/description/mujoco_xml/model_with_obstacles.xml"
-        )
-    )
+    ORIGINAL_MODEL_PATH = Path("test/test_pupper_model.xml")
+    PATH = Path("test/model_with_obstacles.xml")
 
     # Read and modify the model XML
     xml_str = ORIGINAL_MODEL_PATH.read_text()
