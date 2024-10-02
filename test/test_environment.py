@@ -93,7 +93,15 @@ def setup_environment():
     return env_kwargs
 
 
-def test_pupper_environment(setup_environment):
+def test_pupper_environment_with_video(setup_environment):
+    helper_test_pupper_environment(setup_environment, write_video=True)
+
+
+def test_pupper_environment_without_video(setup_environment):
+    helper_test_pupper_environment(setup_environment, write_video=False)
+
+
+def helper_test_pupper_environment(setup_environment, write_video):
     env_kwargs = setup_environment
 
     # Reset environments since internals may be overwritten by tracers from the
@@ -117,7 +125,7 @@ def test_pupper_environment(setup_environment):
     render_every = 2
 
     for i in range(n_steps):
-        print("Step: ", i)
+        print("Step: ", i, end=" ")
         act_rng, rng = jax.random.split(rng)
         # ctrl = jp.array(0.5 * np.random.uniform(low=-1.0, high=1.0, size=eval_env.sys.nu))
         ctrl = jp.ones(eval_env.sys.nu)
@@ -132,15 +140,16 @@ def test_pupper_environment(setup_environment):
             state.info["rewards"]["tracking_orientation"],
         )
 
-    print("Writing video")
-    media.write_video(
-        "test_video.mp4",
-        eval_env.render(rollout[::render_every], camera="tracking_cam"),
-        fps=1.0 / eval_env.dt / render_every,
-    )
+    if write_video:
+        print("Writing video")
+        media.write_video(
+            "test_video.mp4",
+            eval_env.render(rollout[::render_every], camera="tracking_cam"),
+            fps=1.0 / eval_env.dt / render_every,
+        )
 
-    # Check if the video was created
-    assert os.path.exists("test_video.mp4")
+        # Check if the video was created
+        assert os.path.exists("test_video.mp4")
 
 
 if __name__ == "__main__":
