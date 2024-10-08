@@ -289,6 +289,7 @@ class PupperV3Env(PipelineEnv):
         rng, cmd_rng, kick_noise_2, kick_bernoulli, latency_key = jax.random.split(
             state.info["rng"], 5
         )
+        state.info["rng"] = rng
 
         # Whether to kick and the kick velocity are both random
         kick = jax.random.uniform(kick_noise_2, shape=(2,), minval=-1, maxval=1) * self._kick_vel
@@ -409,7 +410,6 @@ class PupperV3Env(PipelineEnv):
         state.info["last_contact"] = contact
         state.info["rewards"] = rewards_dict
         state.info["step"] += 1
-        state.info["rng"] = rng
 
         # Sample new command if more than 500 timesteps achieved
         state.info["command"] = jp.where(
@@ -445,12 +445,12 @@ class PupperV3Env(PipelineEnv):
             inv_torso_rot = jp.array([1, 0, 0, 0])
             local_body_angular_velocity = jp.zeros(3)
 
-        # TODO: add noise for each component
-        # See https://arxiv.org/abs/2202.05481 for magnitudes
-
-        ang_key, gravity_key, motor_angle_key, last_action_key = jax.random.split(
-            state_info["rng"], 4
+        # See https://arxiv.org/abs/2202.05481 as reference for noise addition
+        rng, ang_key, gravity_key, motor_angle_key, last_action_key = jax.random.split(
+            state_info["rng"], 5
         )
+        state_info["rng"] = rng
+
         ang_vel_noise = (
             jax.random.uniform(ang_key, (3,), minval=-1, maxval=1) * self._angular_velocity_noise
         )
