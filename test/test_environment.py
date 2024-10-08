@@ -132,6 +132,8 @@ def helper_test_pupper_environment(setup_environment, write_video):
         state = jit_step(state, ctrl)
         rollout.append(state.pipeline_state)
         print(
+            "rng: ",
+            state.info["rng"],
             "knee collision: ",
             state.info["rewards"]["knee_collision"],
             "body collision: ",
