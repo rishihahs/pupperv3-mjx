@@ -102,10 +102,10 @@ class PupperV3Env(PipelineEnv):
         default_pose: jp.array = jp.array(
             [0.26, 0.0, -0.52, -0.26, 0.0, 0.52, 0.26, 0.0, -0.52, -0.26, 0.0, 0.52]
         ),
-        angular_velocity_noise: float = 0.7,
-        gravity_noise: float = 0.2,
-        motor_angle_noise: float = 0.2,
-        last_action_noise: float = 0.05,
+        angular_velocity_noise: float = 0.3,
+        gravity_noise: float = 0.1,
+        motor_angle_noise: float = 0.1,
+        last_action_noise: float = 0.01,
         kick_vel: float = 0.2,
         kick_probability: float = 0.02,
         terminal_body_z: float = 0.1,
