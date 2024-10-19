@@ -17,6 +17,8 @@ def convert_params(
     default_pose: np.ndarray,
     upper_limits: np.ndarray,
     lower_limits: np.ndarray,
+    use_imu: bool,
+    observation_history: int,
     final_activation: str = "tanh",
 ):
     mean, std = params[0].mean, params[0].std
@@ -55,17 +57,21 @@ def convert_params(
         # Add layer dictionary to layers list
         layers.append(layer_dict)
 
-    # Create the final dictionary
-    final_dict = {"in_shape": [None, input_size], "layers": layers}
-
-    # Add action scale, default_pose, limits
-    final_dict |= {
+    # Create policy diction with additional metadata
+    # for correctly running the policy including
+    # imu, observation_history, kp, kd, default_pose
+    # upper/lower limits, in shape, and finallly layers
+    final_dict = {
+        "use_imu": use_imu,
+        "observation_history": observation_history,
         "action_scale": action_scale,
         "kp": kp,
         "kd": kd,
         "default_pose": np.array(default_pose).tolist(),
         "upper_limits": np.array(upper_limits).tolist(),
         "lower_limits": np.array(lower_limits).tolist(),
+        "in_shape": [None, input_size],
+        "layers": layers,
     }
 
     return final_dict
