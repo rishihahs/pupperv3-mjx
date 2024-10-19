@@ -102,7 +102,10 @@ class PupperV3Env(PipelineEnv):
         default_pose: jp.array = jp.array(
             [0.26, 0.0, -0.52, -0.26, 0.0, 0.52, 0.26, 0.0, -0.52, -0.26, 0.0, 0.52]
         ),
-        obs_noise: float = 0.1,
+        angular_velocity_noise: float = 0.3,
+        gravity_noise: float = 0.1,
+        motor_angle_noise: float = 0.1,
+        last_action_noise: float = 0.01,
         kick_vel: float = 0.2,
         kick_probability: float = 0.02,
         terminal_body_z: float = 0.1,
@@ -118,12 +121,15 @@ class PupperV3Env(PipelineEnv):
         """
         Args:
             path (str): The path to the MJCF file.
+            reward_config (Dict): The reward configuration.
             action_scale (float): The scale to apply to actions.
             observation_history (int): The number of previous observations to include in the state.
             joint_lower_limits (List): The lower limits for the joint angles.
             joint_upper_limits (List): The upper limits for the joint angles.
             dof_damping (float): The damping to apply to the DOFs.
             position_control_kp (float): The position control kp.
+            start_position_config (domain_randomization.StartPositionRandomization):
+            The start position randomization config.
             foot_site_names (List[str]): The names of the foot sites.
             torso_name (str): The name of the torso.
             upper_leg_body_names (List[str]): The names of the upper leg bodies.
@@ -132,24 +138,23 @@ class PupperV3Env(PipelineEnv):
             linear_velocity_x_range (Tuple): The range of linear velocity in the x-direction.
             linear_velocity_y_range (Tuple): The range of linear velocity in the y-direction.
             angular_velocity_range (Tuple): The range of angular velocity.
-            start_position_config (domain_randomization.StartPositionRandomization):
-            The start position randomization config.
             default_pose (jp.array): The default pose.
-            reward_config: The reward configuration.
-            obs_noise (float): The observation noise. Reasonable value is 0.05.
-            kick_vel (float): The kick velocity. [m/s] Reasonable value is 0.05.
-            kick_probability (float): The kick probability. Reasonable value is 0.04.
-            terminal_body_z (float): The terminal body z. Reasonable value is 0.10.
+            angular_velocity_noise (float): The angular velocity noise.
+            gravity_noise (float): The gravity noise.
+            motor_angle_noise (float): The motor angle noise.
+            last_action_noise (float): The last action noise.
+            kick_vel (float): The kick velocity.
+            kick_probability (float): The kick probability.
+            terminal_body_z (float): The terminal body z.
             early_termination_step_threshold (int): The early termination step threshold.
-            Reasonable value is 500.
-            terminal_body_angle (float): The terminal body angle. [rad]. Reasonable value is 0.52.
-            foot_radius (float): The foot radius. Reasonable value is 0.02.
-            environment_timestep (float): The environment timestep. Reasonable value is 0.02.
-            physics_timestep (float): The physics timestep. Reasonable value is 0.004.
-            latency_distribution (jp.array): Probability distribution for action latency.
+            terminal_body_angle (float): The terminal body angle.
+            foot_radius (float): The foot radius.
+            environment_timestep (float): The environment timestep.
+            physics_timestep (float): The physics timestep.
+            latency_distribution (jax.Array): Probability distribution for action latency.
             First element corresponds to 0 latency. Shape: (N, 1)
             desired_world_z_in_body_frame (jax.Array): The desired world z in body frame.
-            Reasonable value is [0.0, 0.0, 1.0].
+            use_imu (bool): Whether to use IMU.
         """
         sys = mjcf.load(path)
         self._dt = environment_timestep  # this environment is 50 fps
@@ -178,7 +183,10 @@ class PupperV3Env(PipelineEnv):
         )
         assert self._torso_idx != -1, "torso not found"
         self._action_scale = action_scale
-        self._obs_noise = obs_noise
+        self._angular_velocity_noise = angular_velocity_noise
+        self._gravity_noise = gravity_noise
+        self._motor_angle_noise = motor_angle_noise
+        self._last_action_noise = last_action_noise
         self._kick_vel = kick_vel
         self._init_q = jp.array(sys.mj_model.keyframe("home").qpos)
         self._default_pose = default_pose
@@ -281,6 +289,7 @@ class PupperV3Env(PipelineEnv):
         rng, cmd_rng, kick_noise_2, kick_bernoulli, latency_key = jax.random.split(
             state.info["rng"], 5
         )
+        state.info["rng"] = rng
 
         # Whether to kick and the kick velocity are both random
         kick = jax.random.uniform(kick_noise_2, shape=(2,), minval=-1, maxval=1) * self._kick_vel
@@ -401,7 +410,6 @@ class PupperV3Env(PipelineEnv):
         state.info["last_contact"] = contact
         state.info["rewards"] = rewards_dict
         state.info["step"] += 1
-        state.info["rng"] = rng
 
         # Sample new command if more than 500 timesteps achieved
         state.info["command"] = jp.where(
@@ -437,24 +445,45 @@ class PupperV3Env(PipelineEnv):
             inv_torso_rot = jp.array([1, 0, 0, 0])
             local_body_angular_velocity = jp.zeros(3)
 
-        # TODO: add noise for each component
-        # See https://arxiv.org/abs/2202.05481 for magnitudes
+        # See https://arxiv.org/abs/2202.05481 as reference for noise addition
+        rng, ang_key, gravity_key, motor_angle_key, last_action_key = jax.random.split(
+            state_info["rng"], 5
+        )
+        state_info["rng"] = rng
+
+        ang_vel_noise = (
+            jax.random.uniform(ang_key, (3,), minval=-1, maxval=1) * self._angular_velocity_noise
+        )
+        gravity_noise = (
+            jax.random.uniform(gravity_key, (3,), minval=-1, maxval=1) * self._gravity_noise
+        )
+        motor_ang_noise = (
+            jax.random.uniform(motor_angle_key, (12,), minval=-1, maxval=1)
+            * self._motor_angle_noise
+        )
+        last_action_noise = (
+            jax.random.uniform(last_action_key, (12,), minval=-1, maxval=1)
+            * self._last_action_noise
+        )
+
+        noised_gravity = math.rotate(jp.array([0, 0, -1]), inv_torso_rot) + gravity_noise
+        noised_gravity = noised_gravity / jp.linalg.norm(noised_gravity)
+
+        # Construct observation and add noise
         obs = jp.concatenate(
             [
-                local_body_angular_velocity,  # angular velocity
-                math.rotate(jp.array([0, 0, -1]), inv_torso_rot),  # projected gravity
+                local_body_angular_velocity + ang_vel_noise,  # angular velocity
+                noised_gravity,  # gravity vector
                 state_info["command"],  # command
-                pipeline_state.q[7:] - self._default_pose,  # motor angles
-                state_info["last_act"],  # last action
+                pipeline_state.q[7:] - self._default_pose + motor_ang_noise,  # motor angles
+                state_info["last_act"] + last_action_noise,  # last action
             ]
         )
 
         assert self.observation_dim == obs.shape[0]
 
-        # clip, noise
-        obs = jp.clip(obs, -100.0, 100.0) + self._obs_noise * jax.random.uniform(
-            state_info["rng"], obs.shape, minval=-1, maxval=1
-        )
+        # clip
+        obs = jp.clip(obs, -100.0, 100.0)
 
         # stack observations through time
         new_obs_history = jp.roll(obs_history, obs.size).at[: obs.size].set(obs)
