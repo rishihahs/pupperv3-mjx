@@ -140,6 +140,8 @@ class PupperV3Env(PipelineEnv):
             linear_velocity_x_range (Tuple): The range of linear velocity in the x-direction.
             linear_velocity_y_range (Tuple): The range of linear velocity in the y-direction.
             angular_velocity_range (Tuple): The range of angular velocity.
+            maximum_pitch_command (float): Maximum abs value of pitch command in degrees
+            maximum_roll_command (float):  Maximum abs value of roll command in degrees
             default_pose (jp.array): The default pose.
             angular_velocity_noise (float): The angular velocity noise.
             gravity_noise (float): The gravity noise.
