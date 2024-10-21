@@ -515,6 +515,7 @@ class PupperV3Env(PipelineEnv):
                 local_body_angular_velocity + ang_vel_noise,  # angular velocity
                 noised_gravity,  # gravity vector
                 state_info["command"],  # command
+                state_info["desired_world_z_in_body_frame"],  # desired body orientation
                 pipeline_state.q[7:] - self._default_pose + motor_ang_noise,  # motor angles
                 state_info["last_act"] + last_action_noise,  # last action
             ]
