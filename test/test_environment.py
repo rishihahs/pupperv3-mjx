@@ -110,6 +110,10 @@ def helper_test_pupper_environment(setup_environment, write_video):
     # domain randomization function.
     eval_env = environment.PupperV3Env(**env_kwargs)
 
+    # produces a vectorized system so doesn't work with this code
+    # rngs = jax.random.split(jax.random.PRNGKey(0), 2)
+    # v_sys, _ = domain_randomization.domain_randomize(eval_env.sys, rngs)
+
     # Initialize the state
     rng = jax.random.PRNGKey(0)
     jit_reset = jax.jit(eval_env.reset)
