@@ -376,6 +376,9 @@ class PupperV3Env(PipelineEnv):
             "stand_still": rewards.reward_stand_still(
                 state.info["command"], joint_angles, self._default_pose
             ),
+            "stand_still_joint_velocity": rewards.reward_stand_still(
+                state.info["command"], joint_vel, jp.zeros(12)
+            ),
             "feet_air_time": rewards.reward_feet_air_time(
                 state.info["feet_air_time"],
                 first_contact,
