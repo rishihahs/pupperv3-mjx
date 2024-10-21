@@ -42,6 +42,7 @@ def test_domain_randomize():
     original_kp = sys.actuator_gainprm[:, 0]
     original_kd = -sys.actuator_biasprm[:, 2]
     original_body_inertia = sys.body_inertia[1]
+    original_body_mass = sys.body_mass[1]
     original_body_com = sys.body_ipos[1]
 
     rngs = jax.random.split(rng, 10)
@@ -57,10 +58,11 @@ def test_domain_randomize():
         body_com_y_shift_range=(0.02, 0.04),
         body_com_z_shift_range=(0.02, 0.04),
         body_inertia_scale_range=(1.5, 2.0),
+        body_mass_scale_range=(1.5, 2.0),
     )
 
     # Check if the output sys has the attributes updated correctly
-    assert sys.geom_friction.shape == (10, 11, 3)
+    assert sys.geom_friction.shape == (10, 23, 3)
     assert sys.actuator_gainprm.shape == (10, 12, 10)
     assert sys.actuator_biasprm.shape == (10, 12, 10)
 
@@ -80,11 +82,16 @@ def test_domain_randomize():
         sys.body_inertia[:, 1] <= 2.0 * original_body_inertia
     ).all()
 
-    # # Test body com changed
+    # Test body mass changed
+    assert (sys.body_mass[:, 1] >= 1.5 * original_body_mass).all() and (
+        sys.body_mass[:, 1] <= 2.0 * original_body_mass
+    ).all()
+
+    # Test body com changed
     assert (sys.body_ipos[:, 1] - original_body_com >= 0.02).all() and (
         sys.body_ipos[:, 1] - original_body_com <= 0.04
     ).all()
 
 
 if __name__ == "__main__":
-    pytest.main()
+    test_domain_randomize()
