@@ -75,10 +75,12 @@ def setup_environment():
             "leg_back_r_3",
             "leg_back_l_3",
         ],
-        resample_velocity_step=500,
+        resample_velocity_step=100,
         linear_velocity_x_range=[-0.75, 0.75],
         linear_velocity_y_range=[-0.5, 0.5],
         angular_velocity_range=[-2.0, 2.0],
+        maximum_pitch_command=30,  # degrees
+        maximum_roll_command=30,  # degrees
         default_pose=DEFAULT_POSE,
         start_position_config=domain_randomization.StartPositionRandomization(
             x_min=-1.0, x_max=1.0, y_min=-1.0, y_max=1.0, z_min=0.18, z_max=0.24
@@ -116,7 +118,7 @@ def helper_test_pupper_environment(setup_environment, write_video):
     # jit_step = eval_env.step
 
     state = jit_reset(rng)
-    state.info["command"] = jp.array([0, 0, 0])
+    state.info["command"] = jp.array([0.5, 0, 0])
 
     rollout = [state.pipeline_state]
 
@@ -134,6 +136,12 @@ def helper_test_pupper_environment(setup_environment, write_video):
         print(
             "rng: ",
             state.info["rng"],
+            "step: ",
+            state.info["step"],
+            "command: ",
+            state.info["command"],
+            "body orientation: ",
+            state.info["desired_world_z_in_body_frame"],
             "knee collision: ",
             state.info["rewards"]["knee_collision"],
             "body collision: ",

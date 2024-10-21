@@ -99,6 +99,8 @@ class PupperV3Env(PipelineEnv):
         linear_velocity_x_range: Tuple = (-0.75, 0.75),
         linear_velocity_y_range: Tuple = (-0.5, 0.5),
         angular_velocity_range: Tuple = (-2.0, 2.0),
+        maximum_pitch_command: float = 0.0,  # degrees
+        maximum_roll_command: float = 0.0,  # degrees
         default_pose: jp.array = jp.array(
             [0.26, 0.0, -0.52, -0.26, 0.0, 0.52, 0.26, 0.0, -0.52, -0.26, 0.0, 0.52]
         ),
@@ -213,6 +215,10 @@ class PupperV3Env(PipelineEnv):
         self._linear_velocity_y_range = linear_velocity_y_range
         self._angular_velocity_range = angular_velocity_range
 
+        # command for body orientation
+        self._maximum_pitch_command = maximum_pitch_command
+        self._maximum_roll_command = maximum_roll_command
+
         self._kick_probability = kick_probability
         self._resample_velocity_step = resample_velocity_step
 
@@ -248,8 +254,29 @@ class PupperV3Env(PipelineEnv):
         new_cmd = jp.array([lin_vel_x[0], lin_vel_y[0], ang_vel_yaw[0]])
         return new_cmd
 
+    def sample_body_orientation(self, rng: jax.Array) -> jax.Array:
+        """
+        Sample random orientation with desired_world_z_in_body_frame as the mean
+        """
+
+        _, key_pitch, key_roll = jax.random.split(rng, 3)
+        pitch = (
+            jax.random.uniform(key_pitch, (1,), minval=-1, maxval=1.0) * self._maximum_pitch_command
+        )
+        roll = (
+            jax.random.uniform(key_roll, (1,), minval=-1, maxval=1.0) * self._maximum_roll_command
+        )
+        # rotate the z unit vector by pitch and roll
+        euler_rotation = math.euler_to_quat(jp.array([pitch[0], roll[0], 0.0]))
+        desired_world_z_in_body_frame = math.rotate(
+            self._desired_world_z_in_body_frame, euler_rotation
+        )
+        return desired_world_z_in_body_frame
+
     def reset(self, rng: jax.Array) -> State:  # pytype: disable=signature-mismatch
-        rng, sample_command_key, randomize_pos_key = jax.random.split(rng, 3)
+        rng, sample_command_key, sample_orientation_key, randomize_pos_key = jax.random.split(
+            rng, 4
+        )
 
         init_q = domain_randomization.randomize_qpos(
             self._init_q, self._start_position_config, rng=randomize_pos_key
@@ -268,7 +295,7 @@ class PupperV3Env(PipelineEnv):
             "rewards": {k: 0.0 for k in self._reward_config.rewards.scales.keys()},
             "kick": jp.array([0.0, 0.0]),
             "step": 0,
-            "desired_world_z_in_body_frame": self._desired_world_z_in_body_frame,
+            "desired_world_z_in_body_frame": self.sample_body_orientation(sample_orientation_key),
         }
 
         obs_history = jp.zeros(
@@ -420,6 +447,14 @@ class PupperV3Env(PipelineEnv):
             self.sample_command(cmd_rng),
             state.info["command"],
         )
+
+        # Resample new desired body orientation
+        state.info["desired_world_z_in_body_frame"] = jp.where(
+            state.info["step"] > self._resample_velocity_step,
+            self.sample_body_orientation(cmd_rng),
+            state.info["desired_world_z_in_body_frame"],
+        )
+
         # Reset the step counter when done
         state.info["step"] = jp.where(
             done | (state.info["step"] > self._resample_velocity_step),
