@@ -88,6 +88,13 @@ def reward_feet_air_time(
     return rew_air_time
 
 
+def reward_abduction_angle(
+    joint_angles: jax.Array, desired_abduction_angles: jax.Array = jp.zeros(4)
+):
+    # Penalize abduction angle
+    return jp.sum(jp.square(joint_angles[1::3] - desired_abduction_angles))
+
+
 def reward_stand_still(
     commands: jax.Array,
     joint_angles: jax.Array,

@@ -48,8 +48,10 @@ def get_config():
                         # Encourage no motion at zero command, L1 regularization
                         # |q_dot|.
                         stand_still_joint_velocity=-0.1,
+                        # Abduction angle penalty
+                        abduction_angle=-0.1,
                         # Early termination penalty.
-                        termination=-1.0,
+                        termination=-100.0,
                         # Penalizing foot slipping on the ground.
                         foot_slip=-0.1,
                         # Penalize knee hitting ground
