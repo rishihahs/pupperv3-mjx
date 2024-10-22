@@ -269,7 +269,8 @@ class PupperV3Env(PipelineEnv):
             jax.random.uniform(key_roll, (1,), minval=-1, maxval=1.0) * self._maximum_roll_command
         )
         # rotate the z unit vector by pitch and roll
-        euler_rotation = math.euler_to_quat(jp.array([pitch[0], roll[0], 0.0]))
+        # euler_to_quat uses x-y'-z'' intrinsic convention so use roll, pitch, yaw
+        euler_rotation = math.euler_to_quat(jp.array([roll[0], pitch[0], 0.0]))
         desired_world_z_in_body_frame = math.rotate(
             self._desired_world_z_in_body_frame, euler_rotation
         )
