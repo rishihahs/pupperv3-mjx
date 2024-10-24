@@ -63,6 +63,7 @@ def convert_params(
     # upper/lower limits, in shape, and finallly layers
     final_dict = {
         "use_imu": use_imu,
+        "control_orientation": True,
         "observation_history": observation_history,
         "action_scale": action_scale,
         "kp": kp,
