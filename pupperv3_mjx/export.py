@@ -68,7 +68,7 @@ def convert_params(
         "action_scale": action_scale,
         "kp": kp,
         "kd": kd,
-        "default_pose": np.array(default_pose).tolist(),
+        "default_joint_pos": np.array(default_pose).tolist(),
         "joint_upper_limits": np.array(joint_upper_limits).tolist(),
         "joint_lower_limits": np.array(joint_lower_limits).tolist(),
         "in_shape": [None, input_size],
