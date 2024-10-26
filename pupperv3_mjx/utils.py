@@ -232,7 +232,7 @@ def visualize_policy(
             "eval/video/command/vx": vx,
             "eval/video/command/vy": vy,
             "eval/video/command/wz": wz,
-            "eval/video": wandb.Video(filename, format="mp4", fps=fps),
+            "eval/video": wandb.Video(filename, format="mp4"),
         },
         step=current_step,
     )
