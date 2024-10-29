@@ -99,6 +99,8 @@ class PupperV3Env(PipelineEnv):
         linear_velocity_x_range: Tuple = (-0.75, 0.75),
         linear_velocity_y_range: Tuple = (-0.5, 0.5),
         angular_velocity_range: Tuple = (-2.0, 2.0),
+        zero_command_probability: float = 0.01,
+        stand_still_command_threshold: float = 0.1,
         maximum_pitch_command: float = 0.0,  # degrees
         maximum_roll_command: float = 0.0,  # degrees
         default_pose: jp.array = jp.array(
@@ -140,6 +142,9 @@ class PupperV3Env(PipelineEnv):
             linear_velocity_x_range (Tuple): The range of linear velocity in the x-direction.
             linear_velocity_y_range (Tuple): The range of linear velocity in the y-direction.
             angular_velocity_range (Tuple): The range of angular velocity.
+            zero_command_probability (float): The probability of a near-zero command. Ensures enough
+                training data with near-zero velocity command to ensure robot learns to stand still
+            stand_still_command_threshold (float): The threshold for the stand still command.
             maximum_pitch_command (float): Maximum abs value of pitch command in degrees
             maximum_roll_command (float):  Maximum abs value of roll command in degrees
             default_pose (jp.array): The default pose.
@@ -216,6 +221,8 @@ class PupperV3Env(PipelineEnv):
         self._linear_velocity_x_range = linear_velocity_x_range
         self._linear_velocity_y_range = linear_velocity_y_range
         self._angular_velocity_range = angular_velocity_range
+        self._zero_command_probability = zero_command_probability
+        self._stand_still_command_threshold = stand_still_command_threshold
 
         # command for body orientation
         self._maximum_pitch_command = maximum_pitch_command
@@ -245,15 +252,32 @@ class PupperV3Env(PipelineEnv):
         self._use_imu = use_imu
 
     def sample_command(self, rng: jax.Array) -> jax.Array:
+        """
+        Sample random command with desired linear and angular velocity ranges. With X% probability
+        return a near-zero command to ensure enough training data with near-zero velocity command
+        """
         lin_vel_x = self._linear_velocity_x_range  # min max [m/s]
         lin_vel_y = self._linear_velocity_y_range  # min max [m/s]
         ang_vel_yaw = self._angular_velocity_range  # min max [rad/s]
 
-        _, key1, key2, key3 = jax.random.split(rng, 4)
+        _, key1, key2, key3, key4, key5 = jax.random.split(rng, 6)
         lin_vel_x = jax.random.uniform(key1, (1,), minval=lin_vel_x[0], maxval=lin_vel_x[1])
         lin_vel_y = jax.random.uniform(key2, (1,), minval=lin_vel_y[0], maxval=lin_vel_y[1])
         ang_vel_yaw = jax.random.uniform(key3, (1,), minval=ang_vel_yaw[0], maxval=ang_vel_yaw[1])
         new_cmd = jp.array([lin_vel_x[0], lin_vel_y[0], ang_vel_yaw[0]])
+
+        # X% probability to return [0, 0, 0]
+        zero_cmd_prob = jax.random.uniform(key4, (1,))
+        noisy_near_zero_command = jax.random.uniform(
+            key5,
+            (3,),
+            minval=-self._stand_still_command_threshold,
+            maxval=self._stand_still_command_threshold,
+        )
+        new_cmd = jp.where(
+            zero_cmd_prob < self._zero_command_probability, noisy_near_zero_command, new_cmd
+        )
+
         return new_cmd
 
     def sample_body_orientation(self, rng: jax.Array) -> jax.Array:
@@ -404,10 +428,10 @@ class PupperV3Env(PipelineEnv):
             ),
             "action_rate": rewards.reward_action_rate(action, state.info["last_act"]),
             "stand_still": rewards.reward_stand_still(
-                state.info["command"], joint_angles, self._default_pose
+                state.info["command"], joint_angles, self._default_pose, 0.1
             ),
             "stand_still_joint_velocity": rewards.reward_stand_still(
-                state.info["command"], joint_vel, jp.zeros(12)
+                state.info["command"], joint_vel, jp.zeros(12), self._stand_still_command_threshold
             ),
             "abduction_angle": rewards.reward_abduction_angle(
                 joint_angles, desired_abduction_angles=jp.zeros(4)

@@ -99,9 +99,21 @@ def reward_stand_still(
     commands: jax.Array,
     joint_angles: jax.Array,
     default_pose: jax.Array,
+    command_threshold: float,
 ) -> jax.Array:
+    """
+    Penalize motion at zero commands
+    Args:
+        commands: robot velocity commands
+        joint_angles: joint angles
+        default_pose: default pose
+        command_threshold: if norm of commands is less than this, return non-zero penalty
+    """
+
     # Penalize motion at zero commands
-    return jp.sum(jp.abs(joint_angles - default_pose)) * (math.normalize(commands[:3])[1] < 0.1)
+    return jp.sum(jp.abs(joint_angles - default_pose)) * (
+        math.normalize(commands[:3])[1] < command_threshold
+    )
 
 
 def reward_foot_slip(
