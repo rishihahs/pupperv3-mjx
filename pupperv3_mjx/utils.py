@@ -198,7 +198,7 @@ def save_checkpoint(current_step, make_policy, params, checkpoint_path: Path):
     orbax_checkpointer = ocp.PyTreeCheckpointer()
     save_args = orbax_utils.save_args_from_target(params)
     path = Path(checkpoint_path) / Path(f"{current_step}")
-    orbax_checkpointer.save(path, params, force=True, save_args=save_args)
+    orbax_checkpointer.save(path.resolve(), params, force=True, save_args=save_args)
     wandb.log_model(path=path.as_posix(), name=f"checkpoint_{wandb.run.name}_{current_step}")
 
 
