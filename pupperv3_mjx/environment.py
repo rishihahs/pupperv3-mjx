@@ -103,9 +103,10 @@ class PupperV3Env(PipelineEnv):
         stand_still_command_threshold: float = 0.1,
         maximum_pitch_command: float = 0.0,  # degrees
         maximum_roll_command: float = 0.0,  # degrees
-        default_pose: jp.array = jp.array(
+        default_pose: jax.Array = jp.array(
             [0.26, 0.0, -0.52, -0.26, 0.0, 0.52, 0.26, 0.0, -0.52, -0.26, 0.0, 0.52]
         ),
+        desired_abduction_angles: jax.Array = jp.array([0.0, 0.0, 0.0, 0.0]),
         angular_velocity_noise: float = 0.3,
         gravity_noise: float = 0.1,
         motor_angle_noise: float = 0.1,
@@ -200,6 +201,7 @@ class PupperV3Env(PipelineEnv):
         self._kick_vel = kick_vel
         self._init_q = jp.array(sys.mj_model.keyframe("home").qpos)
         self._default_pose = default_pose
+        self._desired_abduction_angles = desired_abduction_angles
         self.lowers = joint_lower_limits
         self.uppers = joint_upper_limits
         feet_site = foot_site_names
@@ -455,7 +457,8 @@ class PupperV3Env(PipelineEnv):
                 state.info["command"], joint_vel, jp.zeros(12), self._stand_still_command_threshold
             ),
             "abduction_angle": rewards.reward_abduction_angle(
-                joint_angles, desired_abduction_angles=jp.zeros(4)
+                joint_angles,
+                desired_abduction_angles=self._desired_abduction_angles,
             ),
             "feet_air_time": rewards.reward_feet_air_time(
                 state.info["feet_air_time"],
