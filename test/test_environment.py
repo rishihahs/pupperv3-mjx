@@ -95,12 +95,53 @@ def setup_environment():
     return env_kwargs
 
 
+def test_get_obs(setup_environment):
+    env_kwargs = setup_environment
+    env = environment.PupperV3Env(**env_kwargs)
+
+    rng = jax.random.PRNGKey(0)
+    state = env.reset(rng)
+    obs_history = jp.zeros(env._observation_history * env.observation_dim, dtype=float)
+
+    # Call _get_obs method
+    obs = env._get_obs(state.pipeline_state, state.info, obs_history)
+
+    # Check the shape of the observation
+    assert obs.shape == (env._observation_history * env.observation_dim,)
+
+    # Check that the observation values are within expected range
+    assert jp.all(obs >= -100.0) and jp.all(obs <= 100.0)
+
+
+def test_get_obs_imu_sampling(setup_environment):
+    env_kwargs = setup_environment
+
+    # The imu sample from 2 time steps ago will always be sampled
+    env_kwargs["imu_latency_distribution"] = jp.array([0, 0, 1])
+    env = environment.PupperV3Env(**env_kwargs)
+
+    rng = jax.random.PRNGKey(0)
+    state = env.reset(rng)
+    obs_history = jp.zeros(env._observation_history * env.observation_dim, dtype=float)
+
+    state.info["imu_buffer"] = jp.zeros((6, 3), dtype=float)
+    # Set the 2nd oldest element to ones. The oldest element will pop out.
+    expected_imu_data = jp.arange(6)
+    state.info["imu_buffer"] = state.info["imu_buffer"].at[:, -2].set(expected_imu_data)
+
+    # Call _get_obs method
+    obs = env._get_obs(state.pipeline_state, state.info, obs_history)
+
+    # Check that the imu buffer is being sampled correctly
+    assert jp.allclose(obs[:6], expected_imu_data, atol=1e-5)
+
+
 def test_pupper_environment_with_video(setup_environment):
     helper_test_pupper_environment(setup_environment, write_video=True)
 
 
-def test_pupper_environment_without_video(setup_environment):
-    helper_test_pupper_environment(setup_environment, write_video=False)
+# def test_pupper_environment_without_video(setup_environment):
+#     helper_test_pupper_environment(setup_environment, write_video=False)
 
 
 def helper_test_pupper_environment(setup_environment, write_video):
@@ -142,6 +183,8 @@ def helper_test_pupper_environment(setup_environment, write_video):
             state.info["rng"],
             "step: ",
             state.info["step"],
+            "done: ",
+            state.done,
             "command: ",
             state.info["command"],
             "body orientation: ",

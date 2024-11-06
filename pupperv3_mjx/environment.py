@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple, Optional
 
 import jax
 import mujoco
@@ -28,7 +28,7 @@ def body_name_to_geom_ids(mj_model, body_name: str) -> np.array:
     return body.geomadr + np.arange(np.squeeze(body.geomnum))
 
 
-def body_names_to_geom_idss(mj_model, body_names: List[str]) -> np.array:
+def body_names_to_geom_ids(mj_model, body_names: List[str]) -> np.array:
     return np.concatenate(list(body_name_to_geom_ids(mj_model, name) for name in body_names))
 
 
@@ -96,9 +96,9 @@ class PupperV3Env(PipelineEnv):
             "leg_back_l_3",
         ],
         resample_velocity_step: int = 500,
-        linear_velocity_x_range: Tuple = (-0.75, 0.75),
-        linear_velocity_y_range: Tuple = (-0.5, 0.5),
-        angular_velocity_range: Tuple = (-2.0, 2.0),
+        linear_velocity_x_range: Tuple[float, float] = (-0.75, 0.75),
+        linear_velocity_y_range: Tuple[float, float] = (-0.5, 0.5),
+        angular_velocity_range: Tuple[float, float] = (-2.0, 2.0),
         zero_command_probability: float = 0.01,
         stand_still_command_threshold: float = 0.1,
         maximum_pitch_command: float = 0.0,  # degrees
@@ -119,6 +119,7 @@ class PupperV3Env(PipelineEnv):
         environment_timestep: float = 0.02,
         physics_timestep: float = 0.004,
         latency_distribution: jax.Array = jp.array([0.2, 0.8]),
+        imu_latency_distribution: jax.Array = jp.array([0.5, 0.5]),  # TODO: Measure on pupper
         desired_world_z_in_body_frame: jax.Array = jp.array([0.0, 0.0, 1.0]),
         use_imu: bool = True,
     ):
@@ -209,7 +210,7 @@ class PupperV3Env(PipelineEnv):
         self._feet_site_id = np.array(feet_site_id)
 
         self._lower_leg_body_id = body_names_to_body_ids(sys.mj_model, lower_leg_body_names)
-        self._upper_leg_geom_ids = body_names_to_geom_idss(sys.mj_model, upper_leg_body_names)
+        self._upper_leg_geom_ids = body_names_to_geom_ids(sys.mj_model, upper_leg_body_names)
 
         self._foot_radius = foot_radius
         self._nv = sys.nv
@@ -247,14 +248,16 @@ class PupperV3Env(PipelineEnv):
 
         # latency
         self._latency_distribution = latency_distribution
+        self._imu_latency_distribution = imu_latency_distribution
 
         # whether to use imu
         self._use_imu = use_imu
 
     def sample_command(self, rng: jax.Array) -> jax.Array:
         """
-        Sample random command with desired linear and angular velocity ranges. With X% probability
-        return a near-zero command to ensure enough training data with near-zero velocity command
+        Sample random command with desired linear and angular velocity ranges.
+        With a probability of self._zero_command_probability, return a near-zero
+        command to ensure enough training data with near-zero velocity command.
         """
         lin_vel_x = self._linear_velocity_x_range  # min max [m/s]
         lin_vel_y = self._linear_velocity_y_range  # min max [m/s]
@@ -282,7 +285,19 @@ class PupperV3Env(PipelineEnv):
 
     def sample_body_orientation(self, rng: jax.Array) -> jax.Array:
         """
-        Sample random orientation with desired_world_z_in_body_frame as the mean
+        Sample random orientation with desired_world_z_in_body_frame as the mean.
+
+        This method samples a random body orientation by generating random pitch and roll angles
+        within the specified maximum limits. The desired_world_z_in_body_frame represents the
+        desired orientation of the world z-axis in the body frame, which is used as the mean
+        orientation. The method then rotates the z unit vector by the sampled pitch and roll
+        angles to obtain the desired orientation.
+
+        Args:
+            rng (jax.Array): A random number generator array.
+
+        Returns:
+            jax.Array: The desired world z-axis orientation in the body frame.
         """
 
         _, key_pitch, key_roll = jax.random.split(rng, 3)
@@ -300,6 +315,20 @@ class PupperV3Env(PipelineEnv):
         )
         return desired_world_z_in_body_frame
 
+    def initial_action_buffer(self) -> jax.Array:
+        return jp.zeros((12, self._latency_distribution.shape[0]), dtype=float)
+
+    def initial_imu_buffer(self) -> jax.Array:
+        """
+        Initialize the IMU buffer which is shape (6, buffer_size).
+        The order of elements in each column is:
+            [angular_velocity_x, angular_velocity_y, angular_velocity_z,
+            gravity_x, gravity_y, gravity_z].
+        """
+        buf = jp.zeros((6, self._imu_latency_distribution.shape[0]), dtype=float)
+        buf = buf.at[5, :].set(-1.0)  # gravity is -1.0 in z
+        return buf
+
     def reset(self, rng: jax.Array) -> State:  # pytype: disable=signature-mismatch
         rng, sample_command_key, sample_orientation_key, randomize_pos_key = jax.random.split(
             rng, 4
@@ -314,7 +343,8 @@ class PupperV3Env(PipelineEnv):
         state_info = {
             "rng": rng,
             "last_act": jp.zeros(12, dtype=float),
-            "action_buffer": jp.zeros((12, self._latency_distribution.shape[0]), dtype=float),
+            "action_buffer": self.initial_action_buffer(),
+            "imu_buffer": self.initial_imu_buffer(),
             "last_vel": jp.zeros(12, dtype=float),
             "command": self.sample_command(sample_command_key),
             "last_contact": jp.zeros(4, dtype=bool),
@@ -352,22 +382,13 @@ class PupperV3Env(PipelineEnv):
         qvel = qvel.at[:2].set(kick + qvel[:2])
         state = state.tree_replace({"pipeline_state.qvel": qvel})
 
-        # Handle action latency
-        # Put the current action at the end of the action buffer
-        # The action to take will be the first element of the buffer
-        state.info["action_buffer"] = utils.circular_buffer_push_back(
-            state.info["action_buffer"], action
+        # Sample an action with random latency
+        lagged_action, state.info["action_buffer"] = utils.sample_lagged_value(
+            latency_key, state.info["action_buffer"], action, self._latency_distribution
         )
-
-        # Pick from the action buffer by sampling from discrete distribution
-        # Note that actions may be acted on out of order if the buffer is more than 2 elements
-        action_buffer_idx = jax.random.choice(
-            latency_key, self._latency_distribution.shape[0], p=self._latency_distribution
-        )
-        action_to_take = state.info["action_buffer"][:, action_buffer_idx]
 
         # Physics step
-        motor_targets = self._default_pose + action_to_take * self._action_scale
+        motor_targets = self._default_pose + lagged_action * self._action_scale
         motor_targets = jp.clip(motor_targets, self.lowers, self.uppers)
         pipeline_state = self.pipeline_step(state.pipeline_state, motor_targets)
         x, xd = pipeline_state.x, pipeline_state.xd
@@ -491,7 +512,6 @@ class PupperV3Env(PipelineEnv):
             0,
             state.info["step"],
         )
-
         # Log total displacement as a proxy metric
         state.metrics["total_dist"] = math.normalize(x.pos[self._torso_idx - 1])[1]
         state.metrics.update(state.info["rewards"])
@@ -514,8 +534,8 @@ class PupperV3Env(PipelineEnv):
             local_body_angular_velocity = jp.zeros(3)
 
         # See https://arxiv.org/abs/2202.05481 as reference for noise addition
-        rng, ang_key, gravity_key, motor_angle_key, last_action_key = jax.random.split(
-            state_info["rng"], 5
+        rng, ang_key, gravity_key, motor_angle_key, last_action_key, imu_sample_key = (
+            jax.random.split(state_info["rng"], 6)
         )
         state_info["rng"] = rng
 
@@ -536,12 +556,20 @@ class PupperV3Env(PipelineEnv):
 
         noised_gravity = math.rotate(jp.array([0, 0, -1]), inv_torso_rot) + gravity_noise
         noised_gravity = noised_gravity / jp.linalg.norm(noised_gravity)
+        noised_ang_vel = local_body_angular_velocity + ang_vel_noise
+        noised_imu_data = jp.concatenate([noised_ang_vel, noised_gravity])
+
+        lagged_imu_data, state_info["imu_buffer"] = utils.sample_lagged_value(
+            imu_sample_key,
+            state_info["imu_buffer"],
+            noised_imu_data,
+            self._imu_latency_distribution,
+        )
 
         # Construct observation and add noise
         obs = jp.concatenate(
             [
-                local_body_angular_velocity + ang_vel_noise,  # angular velocity
-                noised_gravity,  # gravity vector
+                lagged_imu_data,  # noised angular velocity and gravity
                 state_info["command"],  # command
                 state_info["desired_world_z_in_body_frame"],  # desired body orientation
                 pipeline_state.q[7:] - self._default_pose + motor_ang_noise,  # motor angles
@@ -555,12 +583,13 @@ class PupperV3Env(PipelineEnv):
         obs = jp.clip(obs, -100.0, 100.0)
 
         # stack observations through time
+        # newest observation at the front
         new_obs_history = jp.roll(obs_history, obs.size).at[: obs.size].set(obs)
 
         return new_obs_history
 
     def render(
-        self, trajectory: List[base.State], camera: str | None = None
+        self, trajectory: List[base.State], camera: Optional[str] = None
     ) -> Sequence[np.ndarray]:
         camera = camera or "track"
         return super().render(trajectory, camera=camera)
