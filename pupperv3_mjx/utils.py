@@ -12,6 +12,7 @@ from jax import numpy as jp
 
 from flax.training import orbax_utils
 from orbax import checkpoint as ocp
+from pathlib import Path
 
 
 def circular_buffer_push_back(buffer: jax.Array, new_value: jax.Array) -> jax.Array:
@@ -192,13 +193,13 @@ def set_robot_starting_position(
     return tree
 
 
-def save_checkpoint(current_step, make_policy, params, checkpoint_path: str):
+def save_checkpoint(current_step, make_policy, params, checkpoint_path: Path):
     # save checkpoints
     orbax_checkpointer = ocp.PyTreeCheckpointer()
     save_args = orbax_utils.save_args_from_target(params)
-    path = checkpoint_path / f"{current_step}"
+    path = Path(checkpoint_path) / Path(f"{current_step}")
     orbax_checkpointer.save(path, params, force=True, save_args=save_args)
-    wandb.log_model(path=path, name=f"checkpoint_{wandb.run.name}_{current_step}")
+    wandb.log_model(path=path.as_posix(), name=f"checkpoint_{wandb.run.name}_{current_step}")
 
 
 def visualize_policy(
