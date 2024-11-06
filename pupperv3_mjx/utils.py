@@ -10,6 +10,9 @@ import wandb
 import jax
 from jax import numpy as jp
 
+from flax.training import orbax_utils
+from orbax import checkpoint as ocp
+
 
 def circular_buffer_push_back(buffer: jax.Array, new_value: jax.Array) -> jax.Array:
     """
@@ -189,9 +192,18 @@ def set_robot_starting_position(
     return tree
 
 
+def save_checkpoint(current_step, make_policy, params, checkpoint_path: str):
+    # save checkpoints
+    orbax_checkpointer = ocp.PyTreeCheckpointer()
+    save_args = orbax_utils.save_args_from_target(params)
+    path = checkpoint_path / f"{current_step}"
+    orbax_checkpointer.save(path, params, force=True, save_args=save_args)
+    wandb.log_model(path=path, name=f"checkpoint_{wandb.run.name}_{current_step}")
+
+
 def visualize_policy(
     current_step,
-    make_policy_fn,
+    make_policy,
     params,
     eval_env,
     jit_step: Callable,
@@ -206,7 +218,7 @@ def visualize_policy(
 
     Args:
     current_step (int): The current training step.
-    make_policy_fn (Callable): A function to create the policy.
+    make_policy (Callable): A function to create the policy.
     params (Tuple): The parameters for the policy.
     eval_env: The evaluation environment.
     jit_step (Callable): A JIT-compiled function to perform a step in the environment.
@@ -217,7 +229,7 @@ def visualize_policy(
     wz (float): The rotational velocity.
     """
 
-    inference_fn = make_policy_fn((params[0], params[1].policy))
+    inference_fn = make_policy((params[0], params[1].policy))
     jit_inference_fn = jax.jit(inference_fn)
 
     # Make robot go forward, back, left, right
