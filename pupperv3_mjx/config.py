@@ -42,11 +42,16 @@ def get_config():
                         # Encourage long swing steps.  However, it does not
                         # encourage high clearances.
                         feet_air_time=0.2,
-                        # Encourage no motion at zero command, L2 regularization
-                        # |q - q_default|^2.
+                        # Encourage no motion at zero command, L1 regularization
+                        # |q - q_default|.
                         stand_still=-0.5,
+                        # Encourage no motion at zero command, L1 regularization
+                        # |q_dot|.
+                        stand_still_joint_velocity=-0.1,
+                        # Abduction angle penalty
+                        abduction_angle=-0.1,
                         # Early termination penalty.
-                        termination=-1.0,
+                        termination=-100.0,
                         # Penalizing foot slipping on the ground.
                         foot_slip=-0.1,
                         # Penalize knee hitting ground

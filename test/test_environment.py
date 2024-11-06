@@ -75,10 +75,12 @@ def setup_environment():
             "leg_back_r_3",
             "leg_back_l_3",
         ],
-        resample_velocity_step=500,
+        resample_velocity_step=100,
         linear_velocity_x_range=[-0.75, 0.75],
         linear_velocity_y_range=[-0.5, 0.5],
         angular_velocity_range=[-2.0, 2.0],
+        maximum_pitch_command=30,  # degrees
+        maximum_roll_command=30,  # degrees
         default_pose=DEFAULT_POSE,
         start_position_config=domain_randomization.StartPositionRandomization(
             x_min=-1.0, x_max=1.0, y_min=-1.0, y_max=1.0, z_min=0.18, z_max=0.24
@@ -93,12 +95,53 @@ def setup_environment():
     return env_kwargs
 
 
+def test_get_obs(setup_environment):
+    env_kwargs = setup_environment
+    env = environment.PupperV3Env(**env_kwargs)
+
+    rng = jax.random.PRNGKey(0)
+    state = env.reset(rng)
+    obs_history = jp.zeros(env._observation_history * env.observation_dim, dtype=float)
+
+    # Call _get_obs method
+    obs = env._get_obs(state.pipeline_state, state.info, obs_history)
+
+    # Check the shape of the observation
+    assert obs.shape == (env._observation_history * env.observation_dim,)
+
+    # Check that the observation values are within expected range
+    assert jp.all(obs >= -100.0) and jp.all(obs <= 100.0)
+
+
+def test_get_obs_imu_sampling(setup_environment):
+    env_kwargs = setup_environment
+
+    # The imu sample from 2 time steps ago will always be sampled
+    env_kwargs["imu_latency_distribution"] = jp.array([0, 0, 1])
+    env = environment.PupperV3Env(**env_kwargs)
+
+    rng = jax.random.PRNGKey(0)
+    state = env.reset(rng)
+    obs_history = jp.zeros(env._observation_history * env.observation_dim, dtype=float)
+
+    state.info["imu_buffer"] = jp.zeros((6, 3), dtype=float)
+    # Set the 2nd oldest element to ones. The oldest element will pop out.
+    expected_imu_data = jp.arange(6)
+    state.info["imu_buffer"] = state.info["imu_buffer"].at[:, -2].set(expected_imu_data)
+
+    # Call _get_obs method
+    obs = env._get_obs(state.pipeline_state, state.info, obs_history)
+
+    # Check that the imu buffer is being sampled correctly
+    assert jp.allclose(obs[:6], expected_imu_data, atol=1e-5)
+
+
 def test_pupper_environment_with_video(setup_environment):
     helper_test_pupper_environment(setup_environment, write_video=True)
 
 
-def test_pupper_environment_without_video(setup_environment):
-    helper_test_pupper_environment(setup_environment, write_video=False)
+# def test_pupper_environment_without_video(setup_environment):
+#     helper_test_pupper_environment(setup_environment, write_video=False)
 
 
 def helper_test_pupper_environment(setup_environment, write_video):
@@ -108,6 +151,10 @@ def helper_test_pupper_environment(setup_environment, write_video):
     # domain randomization function.
     eval_env = environment.PupperV3Env(**env_kwargs)
 
+    # produces a vectorized system so doesn't work with this code
+    # rngs = jax.random.split(jax.random.PRNGKey(0), 2)
+    # v_sys, _ = domain_randomization.domain_randomize(eval_env.sys, rngs)
+
     # Initialize the state
     rng = jax.random.PRNGKey(0)
     jit_reset = jax.jit(eval_env.reset)
@@ -116,7 +163,7 @@ def helper_test_pupper_environment(setup_environment, write_video):
     # jit_step = eval_env.step
 
     state = jit_reset(rng)
-    state.info["command"] = jp.array([0, 0, 0])
+    state.info["command"] = jp.array([0.5, 0, 0])
 
     rollout = [state.pipeline_state]
 
@@ -134,6 +181,14 @@ def helper_test_pupper_environment(setup_environment, write_video):
         print(
             "rng: ",
             state.info["rng"],
+            "step: ",
+            state.info["step"],
+            "done: ",
+            state.done,
+            "command: ",
+            state.info["command"],
+            "body orientation: ",
+            state.info["desired_world_z_in_body_frame"],
             "knee collision: ",
             state.info["rewards"]["knee_collision"],
             "body collision: ",

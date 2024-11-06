@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import difflib
 import re
 import xml.etree.ElementTree as ET
-from typing import List, Callable
+from typing import List, Callable, Tuple
 import mediapy as media
 import os
 import wandb
@@ -14,13 +14,48 @@ from jax import numpy as jp
 def circular_buffer_push_back(buffer: jax.Array, new_value: jax.Array) -> jax.Array:
     """
     Shift a circular buffer back by one step and set the last element to a new value.
+    The newest element will be at buf[:, -1]
 
     Args:
-        buffer (jax.Array): The circular buffer.
-        new_value (jax.Array): The new value to set at the last index.
+        buffer (jax.Array): The circular buffer. Dimensions: (buffer_size, buffer_shape).
+        new_value (jax.Array): The new value to set at the last index. Dimensions: (buffer_shape).
+    Returns:
+        jax.Array: The updated circular buffer.
     """
     buffer = jp.roll(buffer, shift=-1, axis=1)
     return buffer.at[:, -1].set(new_value)
+
+
+def circular_buffer_push_front(buffer: jax.Array, new_value: jax.Array) -> jax.Array:
+    """
+    Shift a circular buffer forward by one step and set the first element to a new value.
+    The newest element will be at buf[:, 0]
+
+    Args:
+        buffer (jax.Array): The circular buffer. Dimensions: (buffer_size, buffer_shape).
+        new_value (jax.Array): The new value to set at the first index. Dimensions: (buffer_shape).
+    Returns:
+        jax.Array: The updated circular buffer.
+    """
+    buffer = jp.roll(buffer, shift=1, axis=1)
+    return buffer.at[:, 0].set(new_value)
+
+
+def sample_lagged_value(
+    rng: jax.Array, buffer_newest_first: jax.Array, new_value: jax.Array, distribution: jax.Array
+) -> Tuple[jax.Array, jax.Array]:
+    """
+    Sample a value from a circular buffer with a lagged distribution.
+    Args:
+        rng (jax.Array): The random number generator key.
+        buffer_newest_first (jax.Array): The circular buffer with the newest element up front.
+        new_value (jax.Array): The new value to set at the first index.
+        distribution (jax.Array): The distribution to sample the lagged value from.
+    Returns:
+        Tuple[jax.Array, jax.Array]: The sampled value and the updated circular buffer.
+    """
+    buffer_newest_first = circular_buffer_push_front(buffer_newest_first, new_value)
+    return jax.random.choice(rng, buffer_newest_first, axis=1, p=distribution), buffer_newest_first
 
 
 def progress(
@@ -188,6 +223,7 @@ def visualize_policy(
     # Make robot go forward, back, left, right
     command_seq = jp.array(
         [
+            [0.0, 0.0, 0.0],
             [vx, 0.0, 0.0],
             [-vx, 0.0, 0.0],
             [0.0, vy, 0.0],
@@ -204,7 +240,7 @@ def visualize_policy(
     rollout = [state.pipeline_state]
 
     # grab a trajectory
-    n_steps = 480
+    n_steps = 560
     render_every = 2
     ctrls = []
 
@@ -231,7 +267,7 @@ def visualize_policy(
             "eval/video/command/vx": vx,
             "eval/video/command/vy": vy,
             "eval/video/command/wz": wz,
-            "eval/video": wandb.Video(filename, format="mp4", fps=fps),
+            "eval/video": wandb.Video(filename, format="mp4"),
         },
         step=current_step,
     )
