@@ -2,7 +2,6 @@
 pytest test/test_domain_randomization.py
 """
 
-import pytest
 from pupperv3_mjx import domain_randomization
 from jax import numpy as jp
 import jax
