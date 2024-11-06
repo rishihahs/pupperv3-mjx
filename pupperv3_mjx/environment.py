@@ -269,7 +269,7 @@ class PupperV3Env(PipelineEnv):
         ang_vel_yaw = jax.random.uniform(key3, (1,), minval=ang_vel_yaw[0], maxval=ang_vel_yaw[1])
         new_cmd = jp.array([lin_vel_x[0], lin_vel_y[0], ang_vel_yaw[0]])
 
-        # X% probability to return [0, 0, 0]
+        # X% probability to return command near [0, 0, 0]
         zero_cmd_prob = jax.random.uniform(key4, (1,))
         noisy_near_zero_command = jax.random.uniform(
             key5,
