@@ -304,3 +304,53 @@ def activation_fn_map(activation_name: str):
         "tanh": jp.tanh,
         "softmax": jax.nn.softmax,
     }[activation_name]
+
+
+def download_checkpoint(
+    project_name,
+    entity_name,
+    run_number: int,
+    save_path: Path = Path("checkpoint"),
+):
+    """
+    Downloads the latest model from a W&B project.
+
+    :param project_name: The name of the W&B project.
+    :param entity_name: The W&B entity (username or team).
+    :param model_dir: The directory where the model will be downloaded.
+    :param model_name: The name to copy the model as.
+    :return: None
+    """
+
+    # Initialize the API
+    api = wandb.Api()
+
+    # Fetch the latest run
+    runs = api.runs(f"{entity_name}/{project_name}")
+
+    # Check if there are any runs
+    if not runs:
+        print("No runs found in the project.")
+        return
+
+    # find the run whose names ends in -run_number
+    runs = [run for run in runs if run.name.endswith(f"-{run_number}")]
+    if not runs:
+        print(f"No runs found with the number {run_number}.")
+        return
+    run = runs[0]
+    print("Using run: ", run.name)
+
+    # get artifacts that start with "checkpoint"
+    artifacts = [art for art in run.logged_artifacts() if "checkpoint" in art.name]
+
+    # sort by the number at the end which has a _ before it and a :blah after it
+    artifacts = sorted(
+        artifacts,
+        key=lambda art: int(art.name.split("_")[-1].split(":")[0]),
+        reverse=True,
+    )
+    latest_checkpoint = artifacts[0]
+
+    print("Downloading the latest checkpoint: ", latest_checkpoint.name, " to ", save_path)
+    latest_checkpoint.download(save_path)
