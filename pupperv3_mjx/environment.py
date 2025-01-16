@@ -193,7 +193,7 @@ class PupperV3Env(PipelineEnv):
             sys.mj_model, mujoco.mjtObj.mjOBJ_BODY.value, torso_name
         )
         assert self._torso_idx != -1, "torso not found"
-        self._action_scale = action_scale
+        self._action_scale = jp.array(action_scale)
         self._angular_velocity_noise = angular_velocity_noise
         self._gravity_noise = gravity_noise
         self._motor_angle_noise = motor_angle_noise
