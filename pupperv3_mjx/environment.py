@@ -378,8 +378,10 @@ class PupperV3Env(PipelineEnv):
         state.info["rng"] = rng
 
         # Whether to kick and the kick velocity are both random
-        kick = jax.random.uniform(kick_noise_2, shape=(2,), minval=-1, maxval=1) * self._kick_vel
-        kick *= jax.random.bernoulli(kick_bernoulli, p=self._kick_probability, shape=(2,))
+        kick = (
+            jax.random.uniform(kick_noise_2, shape=(2,), minval=-1.0, maxval=1.0) * self._kick_vel
+        )
+        kick *= jax.random.bernoulli(kick_bernoulli, p=self._kick_probability, shape=(1,))
         qvel = state.pipeline_state.qvel  # pytype: disable=attribute-error
         qvel = qvel.at[:2].set(kick + qvel[:2])
         state = state.tree_replace({"pipeline_state.qvel": qvel})
