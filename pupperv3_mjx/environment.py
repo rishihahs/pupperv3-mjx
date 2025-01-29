@@ -265,7 +265,7 @@ class PupperV3Env(PipelineEnv):
         lin_vel_y = self._linear_velocity_y_range  # min max [m/s]
         ang_vel_yaw = self._angular_velocity_range  # min max [rad/s]
 
-        _, key1, key2, key3, key4, key5 = jax.random.split(rng, 6)
+        rng, key1, key2, key3, key4, key5 = jax.random.split(rng, 6)
         lin_vel_x = jax.random.uniform(key1, (1,), minval=lin_vel_x[0], maxval=lin_vel_x[1])
         lin_vel_y = jax.random.uniform(key2, (1,), minval=lin_vel_y[0], maxval=lin_vel_y[1])
         ang_vel_yaw = jax.random.uniform(key3, (1,), minval=ang_vel_yaw[0], maxval=ang_vel_yaw[1])
@@ -302,7 +302,7 @@ class PupperV3Env(PipelineEnv):
             jax.Array: The desired world z-axis orientation in the body frame.
         """
 
-        _, key_pitch, key_roll = jax.random.split(rng, 3)
+        rng, key_pitch, key_roll = jax.random.split(rng, 3)
         pitch = (
             jax.random.uniform(key_pitch, (1,), minval=-1, maxval=1.0) * self._maximum_pitch_command
         )
@@ -372,10 +372,9 @@ class PupperV3Env(PipelineEnv):
         return state
 
     def step(self, state: State, action: jax.Array) -> State:  # pytype: disable=signature-mismatch
-        rng, cmd_rng, kick_noise_2, kick_bernoulli, latency_key = jax.random.split(
+        state.info["rng"], cmd_rng, kick_noise_2, kick_bernoulli, latency_key = jax.random.split(
             state.info["rng"], 5
         )
-        state.info["rng"] = rng
 
         # Whether to kick and the kick velocity are both random
         kick = (
@@ -539,10 +538,14 @@ class PupperV3Env(PipelineEnv):
             local_body_angular_velocity = jp.zeros(3)
 
         # See https://arxiv.org/abs/2202.05481 as reference for noise addition
-        rng, ang_key, gravity_key, motor_angle_key, last_action_key, imu_sample_key = (
-            jax.random.split(state_info["rng"], 6)
-        )
-        state_info["rng"] = rng
+        (
+            state_info["rng"],
+            ang_key,
+            gravity_key,
+            motor_angle_key,
+            last_action_key,
+            imu_sample_key,
+        ) = jax.random.split(state_info["rng"], 6)
 
         ang_vel_noise = (
             jax.random.uniform(ang_key, (3,), minval=-1, maxval=1) * self._angular_velocity_noise

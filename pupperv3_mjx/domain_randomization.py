@@ -23,12 +23,12 @@ def domain_randomize(
 
     @jax.vmap
     def rand(rng):
-        _, key = jax.random.split(rng, 2)
+        rng, key = jax.random.split(rng, 2)
         # friction
         friction = jax.random.uniform(key, (1,), minval=friction_range[0], maxval=friction_range[1])
         friction = sys.geom_friction.at[:, 0].set(friction)
         # actuator
-        _, key_kp, key_kd = jax.random.split(key, 3)
+        rng, key_kp, key_kd = jax.random.split(rng, 3)
         kp = (
             jax.random.uniform(
                 key_kp, (1,), minval=kp_multiplier_range[0], maxval=kp_multiplier_range[1]
@@ -42,7 +42,7 @@ def domain_randomize(
         gain = sys.actuator_gainprm.at[:, 0].set(kp)
         bias = sys.actuator_biasprm.at[:, 1].set(-kp).at[:, 2].set(-kd)
 
-        _, key_com = jax.random.split(key_kd)
+        rng, key_com = jax.random.split(rng)
         body_com_shift = jax.random.uniform(
             key_com,
             (3,),
@@ -57,7 +57,7 @@ def domain_randomize(
 
         # TODO(nathankau) think if we want to scale inertia uniformly or not
         # TODO(nathankau) do we want to randomize all links inertia or just main body?
-        _, key_inertia = jax.random.split(key_com)
+        rng, key_inertia = jax.random.split(rng)
         body_inertia_scale = jax.random.uniform(
             key_inertia,
             sys.body_inertia.shape,
@@ -66,7 +66,7 @@ def domain_randomize(
         )
         body_inertia = sys.body_inertia * body_inertia_scale
 
-        _, key_mass = jax.random.split(key_inertia)
+        rng, key_mass = jax.random.split(rng)
         body_mass_scale = jax.random.uniform(
             key_mass,
             sys.body_mass.shape,
@@ -115,6 +115,61 @@ class StartPositionRandomization:
     z_max: float
 
 
+def small_quaternion(rng, max_angle_deg=30, max_yaw_deg=180):
+    """
+    Returns a quaternion with random pitch and roll in [-max_angle_deg, max_angle_deg]
+    (in degrees) and yaw in [-max_yaw_deg, max_yaw_deg], then converted to radians and into quaternion form.
+
+    Args:
+        rng: JAX random key.
+        max_angle_deg (float): Maximum magnitude of pitch/roll in degrees.
+        max_yaw_deg (float): Maximum magnitude of yaw in degrees.
+
+    Returns:
+        jax.numpy array: Shape (4,). The quaternion (w, x, y, z).
+    """
+
+    rng, key_pitch, key_roll, key_yaw = jax.random.split(rng, 4)
+
+    # Random pitch, roll, and yaw in [-max_angle_deg, max_angle_deg]
+    pitch_deg = (jax.random.uniform(key_pitch, ()) * 2 - 1) * max_angle_deg
+    roll_deg = (jax.random.uniform(key_roll, ()) * 2 - 1) * max_angle_deg
+    yaw_deg = (jax.random.uniform(key_yaw, ()) * 2 - 1) * max_yaw_deg
+
+    # Convert degrees to radians
+    pitch_rad = pitch_deg * jp.pi / 180.0
+    roll_rad = roll_deg * jp.pi / 180.0
+    yaw_rad = yaw_deg * jp.pi / 180.0
+
+    # Half angles
+    half_pitch = pitch_rad / 2
+    half_roll = roll_rad / 2
+    half_yaw = yaw_rad / 2
+
+    # cosines and sines of half angles
+    cr = jp.cos(half_roll)
+    sr = jp.sin(half_roll)
+    cp = jp.cos(half_pitch)
+    sp = jp.sin(half_pitch)
+    cy = jp.cos(half_yaw)
+    sy = jp.sin(half_yaw)
+
+    # Convert Euler angles -> Quaternion
+    # Roll (X), Pitch (Y), Yaw (Z) in intrinsic rotation order
+    w = cr * cp * cy + sr * sp * sy
+    x = sr * cp * cy - cr * sp * sy
+    y = cr * sp * cy + sr * cp * sy
+    z = cr * cp * sy - sr * sp * cy
+
+    # Stack to form quaternion
+    q = jp.array([w, x, y, z])
+
+    # Normalize quaternion (though it should already be nearly normalized)
+    q = q / jp.linalg.norm(q)
+
+    return q
+
+
 def random_z_rotation_quaternion(rng):
     """Generates a random quaternion with a random yaw angle."""
     yaw = jax.random.uniform(rng, (1,), minval=-jp.pi, maxval=jp.pi)
@@ -126,7 +181,7 @@ def random_z_rotation_quaternion(rng):
 def randomize_qpos(qpos: jp.array, start_position_config: StartPositionRandomization, rng):
     """Return qpos with randomized position of first body. Do not use rng again!"""
 
-    key_x, key_y, key_z, key_yaw = jax.random.split(rng, 4)
+    rng, key_x, key_y, key_z, key_yaw = jax.random.split(rng, 5)
     qpos = qpos.at[:3].set(
         jax.random.uniform(
             key_z,
