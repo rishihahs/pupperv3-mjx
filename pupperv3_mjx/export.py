@@ -1,3 +1,4 @@
+from typing import Dict
 import numpy as np
 from jax import numpy as jp
 
@@ -19,8 +20,10 @@ def convert_params(
     joint_lower_limits: np.ndarray,
     use_imu: bool,
     observation_history: int,
+    maximum_pitch_command: float,
+    maximum_roll_command: float,
     final_activation: str = "tanh",
-):
+) -> Dict:
     mean, std = params[0].mean, params[0].std
     params_dict = params[1]["params"]
     layers = []
@@ -30,7 +33,9 @@ def convert_params(
         bias = layer_params["bias"]
         kernel = layer_params["kernel"]
         if is_first_layer:
-            kernel, bias = fold_in_normalization(A=kernel, b=bias, mean=mean, std=std)
+            kernel, bias = fold_in_normalization(
+                A=kernel, b=bias, mean=mean, std=std
+            )
             input_size = kernel.shape[0]
         if is_final_layer:
             bias, _ = jp.split(bias, 2, axis=-1)
@@ -49,7 +54,9 @@ def convert_params(
         # Create layer dictionary
         layer_dict = {
             "type": "dense",
-            "activation": activation if not is_final_layer else final_activation,
+            "activation": (
+                activation if not is_final_layer else final_activation
+            ),
             "shape": [None, output_shape],
             "weights": [kernel_list, bias.tolist()],
         }
@@ -58,9 +65,6 @@ def convert_params(
         layers.append(layer_dict)
 
     # Create policy diction with additional metadata
-    # for correctly running the policy including
-    # imu, observation_history, kp, kd, default_pose
-    # upper/lower limits, in shape, and finallly layers
     final_dict = {
         "use_imu": use_imu,
         "control_orientation": True,
@@ -71,6 +75,8 @@ def convert_params(
         "default_joint_pos": np.array(default_pose).tolist(),
         "joint_upper_limits": np.array(joint_upper_limits).tolist(),
         "joint_lower_limits": np.array(joint_lower_limits).tolist(),
+        "maximum_pitch_command": maximum_pitch_command,
+        "maximum_roll_command": maximum_roll_command,
         "in_shape": [None, input_size],
         "layers": layers,
     }
