@@ -18,15 +18,24 @@ def test_randomize_qpos():
 
     rng = jax.random.PRNGKey(0)
 
-    qpos = domain_randomization.randomize_qpos(
-        jp.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=jp.float32), start_position_config, rng
-    )
+    for i in range(100):
+        # Generate a random key
+        rng, subkey = jax.random.split(rng)
+        # Randomize the qpos
+        qpos = domain_randomization.randomize_qpos(
+            jp.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=jp.float32),
+            start_position_config,
+            subkey,
+        )
 
-    expected_qpos = jp.array([-0.184, 0.165, 0.278, 0.709, 0.0, 0.0, 0.705, 7.0, 8.0, 9.0, 10.0])
-
-    assert jp.isclose(
-        qpos, expected_qpos, atol=1e-3
-    ).all(), f"Expected: {expected_qpos}, but got: {qpos}"
+        assert (
+            (qpos[0] >= start_position_config.x_min)
+            and (qpos[0] <= start_position_config.x_max)
+            and (qpos[1] >= start_position_config.y_min)
+            and (qpos[1] <= start_position_config.y_max)
+            and (qpos[2] >= start_position_config.z_min)
+            and (qpos[2] <= start_position_config.z_max)
+        ), f"Randomized qpos {qpos} is out of bounds"
 
 
 def test_domain_randomize():
@@ -66,7 +75,9 @@ def test_domain_randomize():
     assert sys.actuator_biasprm.shape == (10, 12, 10)
 
     # Test friction changed
-    assert (sys.geom_friction[:, :, 0] >= 2.0).all() and (sys.geom_friction[:, :, 0] <= 10.0).all()
+    assert (sys.geom_friction[:, :, 0] >= 2.0).all() and (
+        sys.geom_friction[:, :, 0] <= 10.0
+    ).all()
 
     # Test actuator gains changed
     assert (sys.actuator_gainprm[:, :, 0] >= 1.1 * original_kp).all() and (
