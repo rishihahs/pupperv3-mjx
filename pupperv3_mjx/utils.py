@@ -46,7 +46,10 @@ def circular_buffer_push_front(buffer: jax.Array, new_value: jax.Array) -> jax.A
 
 
 def sample_lagged_value(
-    rng: jax.Array, buffer_newest_first: jax.Array, new_value: jax.Array, distribution: jax.Array
+    rng: jax.Array,
+    buffer_newest_first: jax.Array,
+    new_value: jax.Array,
+    distribution: jax.Array,
 ) -> Tuple[jax.Array, jax.Array]:
     """
     Sample a value from a circular buffer with a lagged distribution.
@@ -59,7 +62,10 @@ def sample_lagged_value(
         Tuple[jax.Array, jax.Array]: The sampled value and the updated circular buffer.
     """
     buffer_newest_first = circular_buffer_push_front(buffer_newest_first, new_value)
-    return jax.random.choice(rng, buffer_newest_first, axis=1, p=distribution), buffer_newest_first
+    return (
+        jax.random.choice(rng, buffer_newest_first, axis=1, p=distribution),
+        buffer_newest_first,
+    )
 
 
 def progress(
@@ -161,9 +167,7 @@ def set_mjx_custom_options(tree: ET.ElementTree, max_contact_points: int, max_ge
     return None
 
 
-def set_robot_starting_position(
-    tree: ET.ElementTree, starting_pos: List, starting_quat: List = None
-):
+def set_robot_starting_position(tree: ET.ElementTree, starting_pos: List, starting_quat: List = None):
     """
     Change the starting position of the robot in the XML MuJoCo model file.
 
@@ -180,7 +184,8 @@ def set_robot_starting_position(
     body.set("pos", f"{starting_pos[0]} {starting_pos[1]} {starting_pos[2]}")
     if starting_quat is not None:
         body.set(
-            "quat", f"{starting_quat[0]} {starting_quat[1]} {starting_quat[2]} {starting_quat[3]}"
+            "quat",
+            f"{starting_quat[0]} {starting_quat[1]} {starting_quat[2]} {starting_quat[3]}",
         )
 
     home_position = tree.find(".//keyframe/key[@name='home']")
@@ -199,7 +204,10 @@ def save_checkpoint(current_step, make_policy, params, checkpoint_path: Path):
     save_args = orbax_utils.save_args_from_target(params)
     path = Path(checkpoint_path) / Path(f"{current_step}")
     orbax_checkpointer.save(path.resolve(), params, force=True, save_args=save_args)
-    wandb.log_model(path=path.as_posix(), name=f"checkpoint_{wandb.run.name}_{current_step}")
+    wandb.log_model(
+        path=path.as_posix(),
+        name=f"checkpoint_{wandb.run.name}_{current_step}",
+    )
 
 
 def visualize_policy(
@@ -352,5 +360,20 @@ def download_checkpoint(
     )
     latest_checkpoint = artifacts[0]
 
-    print("Downloading the latest checkpoint: ", latest_checkpoint.name, " to ", save_path)
+    print(
+        "Downloading the latest checkpoint: ",
+        latest_checkpoint.name,
+        " to ",
+        save_path,
+    )
     latest_checkpoint.download(save_path)
+
+
+if __name__ == "__main__":
+    # Example usage
+    download_checkpoint(
+        entity_name="hands-on-robotics",
+        project_name="pupperv3-mjx-rl",
+        run_number=238,
+        save_path=Path("checkpoint"),
+    )

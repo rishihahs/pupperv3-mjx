@@ -31,12 +31,18 @@ def domain_randomize(
         rng, key_kp, key_kd = jax.random.split(rng, 3)
         kp = (
             jax.random.uniform(
-                key_kp, (1,), minval=kp_multiplier_range[0], maxval=kp_multiplier_range[1]
+                key_kp,
+                (1,),
+                minval=kp_multiplier_range[0],
+                maxval=kp_multiplier_range[1],
             )
             * sys.actuator_gainprm[:, 0]
         )
         kd = jax.random.uniform(
-            key_kd, (1,), minval=kd_multiplier_range[0], maxval=kd_multiplier_range[1]
+            key_kd,
+            (1,),
+            minval=kd_multiplier_range[0],
+            maxval=kd_multiplier_range[1],
         ) * (-sys.actuator_biasprm[:, 2])
 
         gain = sys.actuator_gainprm.at[:, 0].set(kp)
@@ -47,10 +53,18 @@ def domain_randomize(
             key_com,
             (3,),
             minval=jp.array(
-                [body_com_x_shift_range[0], body_com_y_shift_range[0], body_com_z_shift_range[0]]
+                [
+                    body_com_x_shift_range[0],
+                    body_com_y_shift_range[0],
+                    body_com_z_shift_range[0],
+                ]
             ),
             maxval=jp.array(
-                [body_com_x_shift_range[1], body_com_y_shift_range[1], body_com_z_shift_range[1]]
+                [
+                    body_com_x_shift_range[1],
+                    body_com_y_shift_range[1],
+                    body_com_z_shift_range[1],
+                ]
             ),
         )
         body_com = sys.body_ipos.at[1].set(sys.body_ipos[1] + body_com_shift)
@@ -181,10 +195,10 @@ def random_z_rotation_quaternion(rng):
 def randomize_qpos(qpos: jp.array, start_position_config: StartPositionRandomization, rng):
     """Return qpos with randomized position of first body. Do not use rng again!"""
 
-    rng, key_x, key_y, key_z, key_yaw = jax.random.split(rng, 5)
+    rng, key_pos, key_yaw = jax.random.split(rng, 3)
     qpos = qpos.at[:3].set(
         jax.random.uniform(
-            key_z,
+            key_pos,
             shape=(3,),
             minval=jp.array(
                 (

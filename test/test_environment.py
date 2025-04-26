@@ -45,7 +45,20 @@ def setup_environment():
     JOINT_UPPER_LIMITS = sys.jnt_range[1:, 1]
     JOINT_LOWER_LIMITS = sys.jnt_range[1:, 0]
     DEFAULT_POSE = jp.array(
-        [0.26, 0.0, -0.52, -0.26, 0.0, 0.52, 0.26, 0.0, -0.52, -0.26, 0.0, 0.52]
+        [
+            0.26,
+            0.0,
+            -0.52,
+            -0.26,
+            0.0,
+            0.52,
+            0.26,
+            0.0,
+            -0.52,
+            -0.26,
+            0.0,
+            0.52,
+        ]
     )
 
     env_kwargs = dict(
@@ -83,7 +96,14 @@ def setup_environment():
         maximum_roll_command=30,  # degrees
         default_pose=DEFAULT_POSE,
         start_position_config=domain_randomization.StartPositionRandomization(
-            x_min=-1.0, x_max=1.0, y_min=-1.0, y_max=1.0, z_min=0.18, z_max=0.24
+            x_min=-1.0,
+            x_max=1.0,
+            y_min=-1.0,
+            y_max=1.0,
+            z_min=0.18,
+            z_max=0.24,
+            # roll_pitch_max_angle_deg=30,
+            # motor_angle_max_perturbation_deg=20,
         ),
         reward_config=config.get_config(),
         kick_vel=1.0,
