@@ -1,7 +1,7 @@
-import xml.etree.ElementTree as ET
-import random
-from typing import Tuple
 import math
+import random
+import xml.etree.ElementTree as ET
+from typing import Tuple
 
 
 def random_z_rotation_quaternion(seed: int = 0):
@@ -45,7 +45,7 @@ def add_boxes_to_model(
             pos=f"{x} {y} 0",
             quat=quat_str,
             type="box",
-            size=f"{depth/2.0} {length/2.0} {height}",
+            size=f"{depth / 2.0} {length / 2.0} {height}",
             rgba="0.1 0.5 0.8 1",
             conaffinity="1",
             contype="1",

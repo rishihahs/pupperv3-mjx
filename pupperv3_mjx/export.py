@@ -1,4 +1,5 @@
 from typing import Dict
+
 import numpy as np
 from jax import numpy as jp
 
@@ -33,9 +34,7 @@ def convert_params(
         bias = layer_params["bias"]
         kernel = layer_params["kernel"]
         if is_first_layer:
-            kernel, bias = fold_in_normalization(
-                A=kernel, b=bias, mean=mean, std=std
-            )
+            kernel, bias = fold_in_normalization(A=kernel, b=bias, mean=mean, std=std)
             input_size = kernel.shape[0]
         if is_final_layer:
             bias, _ = jp.split(bias, 2, axis=-1)
@@ -54,9 +53,7 @@ def convert_params(
         # Create layer dictionary
         layer_dict = {
             "type": "dense",
-            "activation": (
-                activation if not is_final_layer else final_activation
-            ),
+            "activation": activation if not is_final_layer else final_activation,
             "shape": [None, output_shape],
             "weights": [kernel_list, bias.tolist()],
         }

@@ -1,7 +1,8 @@
-import jax
 from dataclasses import dataclass
-from jax import numpy as jp
 from typing import Tuple
+
+import jax
+from jax import numpy as jp
 
 
 def domain_randomize(
@@ -52,20 +53,16 @@ def domain_randomize(
         body_com_shift = jax.random.uniform(
             key_com,
             (3,),
-            minval=jp.array(
-                [
-                    body_com_x_shift_range[0],
-                    body_com_y_shift_range[0],
-                    body_com_z_shift_range[0],
-                ]
-            ),
-            maxval=jp.array(
-                [
-                    body_com_x_shift_range[1],
-                    body_com_y_shift_range[1],
-                    body_com_z_shift_range[1],
-                ]
-            ),
+            minval=jp.array([
+                body_com_x_shift_range[0],
+                body_com_y_shift_range[0],
+                body_com_z_shift_range[0],
+            ]),
+            maxval=jp.array([
+                body_com_x_shift_range[1],
+                body_com_y_shift_range[1],
+                body_com_z_shift_range[1],
+            ]),
         )
         body_com = sys.body_ipos.at[1].set(sys.body_ipos[1] + body_com_shift)
 
@@ -94,27 +91,23 @@ def domain_randomize(
     friction, gain, bias, body_com, body_inertia, body_mass = rand(rng)
 
     in_axes = jax.tree_map(lambda x: None, sys)
-    in_axes = in_axes.tree_replace(
-        {
-            "geom_friction": 0,
-            "actuator_gainprm": 0,
-            "actuator_biasprm": 0,
-            "body_ipos": 0,
-            "body_inertia": 0,
-            "body_mass": 0,
-        }
-    )
+    in_axes = in_axes.tree_replace({
+        "geom_friction": 0,
+        "actuator_gainprm": 0,
+        "actuator_biasprm": 0,
+        "body_ipos": 0,
+        "body_inertia": 0,
+        "body_mass": 0,
+    })
 
-    sys = sys.tree_replace(
-        {
-            "geom_friction": friction,
-            "actuator_gainprm": gain,
-            "actuator_biasprm": bias,
-            "body_ipos": body_com,
-            "body_inertia": body_inertia,
-            "body_mass": body_mass,
-        }
-    )
+    sys = sys.tree_replace({
+        "geom_friction": friction,
+        "actuator_gainprm": gain,
+        "actuator_biasprm": bias,
+        "body_ipos": body_com,
+        "body_inertia": body_inertia,
+        "body_mass": body_mass,
+    })
 
     return sys, in_axes
 
@@ -200,20 +193,16 @@ def randomize_qpos(qpos: jp.array, start_position_config: StartPositionRandomiza
         jax.random.uniform(
             key_pos,
             shape=(3,),
-            minval=jp.array(
-                (
-                    start_position_config.x_min,
-                    start_position_config.y_min,
-                    start_position_config.z_min,
-                )
-            ),
-            maxval=jp.array(
-                (
-                    start_position_config.x_max,
-                    start_position_config.y_max,
-                    start_position_config.z_max,
-                )
-            ),
+            minval=jp.array((
+                start_position_config.x_min,
+                start_position_config.y_min,
+                start_position_config.z_min,
+            )),
+            maxval=jp.array((
+                start_position_config.x_max,
+                start_position_config.y_max,
+                start_position_config.z_max,
+            )),
         )
     )
     random_yaw_quat = random_z_rotation_quaternion(key_yaw)

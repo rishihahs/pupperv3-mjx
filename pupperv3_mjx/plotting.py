@@ -1,7 +1,8 @@
-import plotly.graph_objects as go
-import numpy as np
-from scipy.signal import hilbert
 from typing import List
+
+import numpy as np
+import plotly.graph_objects as go
+from scipy.signal import hilbert
 
 
 def plot_multi_series(data, dt=1.0, display_axes=None, title=None, names: List = None):
@@ -57,7 +58,5 @@ def hilbert_transform(signal, fs):
     instantaneous_amplitude = np.abs(analytic_signal)
     instantaneous_phase = np.unwrap(np.angle(analytic_signal))
     instantaneous_frequency = np.diff(instantaneous_phase) / (2.0 * np.pi * (1 / fs))
-    instantaneous_frequency = np.concatenate(
-        ([instantaneous_frequency[0]], instantaneous_frequency)
-    )
+    instantaneous_frequency = np.concatenate(([instantaneous_frequency[0]], instantaneous_frequency))
     return instantaneous_amplitude, instantaneous_frequency, instantaneous_phase

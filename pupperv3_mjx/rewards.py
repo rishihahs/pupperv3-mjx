@@ -1,8 +1,8 @@
 import jax
-from jax import numpy as jp
-from brax.base import Motion, Transform
-from brax import base, math
 import numpy as np
+from brax import base, math
+from brax.base import Motion, Transform
+from jax import numpy as jp
 
 
 # ------------ reward functions----------------
@@ -41,9 +41,7 @@ def reward_torques(torques: jax.Array) -> jax.Array:
     return jp.sum(jp.square(torques))
 
 
-def reward_joint_acceleration(
-    joint_vel: jax.Array, last_joint_vel: jax.Array, dt: float
-) -> jax.Array:
+def reward_joint_acceleration(joint_vel: jax.Array, last_joint_vel: jax.Array, dt: float) -> jax.Array:
     return jp.sum(jp.square((joint_vel - last_joint_vel) / dt))
 
 
@@ -57,9 +55,7 @@ def reward_action_rate(act: jax.Array, last_act: jax.Array) -> jax.Array:
     return jp.sum(jp.square(act - last_act))
 
 
-def reward_tracking_lin_vel(
-    commands: jax.Array, x: Transform, xd: Motion, tracking_sigma
-) -> jax.Array:
+def reward_tracking_lin_vel(commands: jax.Array, x: Transform, xd: Motion, tracking_sigma) -> jax.Array:
     # Tracking of linear velocity commands (xy axes)
     local_vel = math.rotate(xd.vel[0], math.quat_inv(x.rot[0]))
     lin_vel_error = jp.sum(jp.square(commands[:2] - local_vel[:2]))
@@ -67,9 +63,7 @@ def reward_tracking_lin_vel(
     return lin_vel_reward
 
 
-def reward_tracking_ang_vel(
-    commands: jax.Array, x: Transform, xd: Motion, tracking_sigma
-) -> jax.Array:
+def reward_tracking_ang_vel(commands: jax.Array, x: Transform, xd: Motion, tracking_sigma) -> jax.Array:
     # Tracking of angular velocity commands (yaw)
     base_ang_vel = math.rotate(xd.ang[0], math.quat_inv(x.rot[0]))
     ang_vel_error = jp.square(commands[2] - base_ang_vel[2])
@@ -88,9 +82,7 @@ def reward_feet_air_time(
     return rew_air_time
 
 
-def reward_abduction_angle(
-    joint_angles: jax.Array, desired_abduction_angles: jax.Array = jp.zeros(4)
-):
+def reward_abduction_angle(joint_angles: jax.Array, desired_abduction_angles: jax.Array = jp.zeros(4)):
     # Penalize abduction angle
     return jp.sum(jp.square(joint_angles[1::3] - desired_abduction_angles))
 
@@ -111,9 +103,7 @@ def reward_stand_still(
     """
 
     # Penalize motion at zero commands
-    return jp.sum(jp.abs(joint_angles - default_pose)) * (
-        math.normalize(commands[:3])[1] < command_threshold
-    )
+    return jp.sum(jp.abs(joint_angles - default_pose)) * (math.normalize(commands[:3])[1] < command_threshold)
 
 
 def reward_foot_slip(

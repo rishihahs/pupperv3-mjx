@@ -2,13 +2,14 @@
 pytest test/test_domain_randomization.py
 """
 
-from pupperv3_mjx import domain_randomization
-from jax import numpy as jp
-import jax
 from pathlib import Path
 
-from jax import random
+import jax
 from brax.io import mjcf
+from jax import numpy as jp
+from jax import random
+
+from pupperv3_mjx import domain_randomization
 
 
 def test_randomize_qpos():
@@ -75,9 +76,7 @@ def test_domain_randomize():
     assert sys.actuator_biasprm.shape == (10, 12, 10)
 
     # Test friction changed
-    assert (sys.geom_friction[:, :, 0] >= 2.0).all() and (
-        sys.geom_friction[:, :, 0] <= 10.0
-    ).all()
+    assert (sys.geom_friction[:, :, 0] >= 2.0).all() and (sys.geom_friction[:, :, 0] <= 10.0).all()
 
     # Test actuator gains changed
     assert (sys.actuator_gainprm[:, :, 0] >= 1.1 * original_kp).all() and (

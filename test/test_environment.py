@@ -2,15 +2,17 @@
 pytest -s test/test_environment.py
 """
 
-import pytest
-from pupperv3_mjx import environment, domain_randomization, config, obstacles
-import jax
-from jax import numpy as jp
-from pathlib import Path
-import xml.etree.ElementTree as ET
-import mediapy as media
 import os
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+import jax
+import mediapy as media
+import pytest
 from brax.io import mjcf
+from jax import numpy as jp
+
+from pupperv3_mjx import config, domain_randomization, environment, obstacles
 
 
 @pytest.fixture(scope="module")
@@ -44,22 +46,20 @@ def setup_environment():
     sys = mjcf.load(ORIGINAL_MODEL_PATH.as_posix())
     JOINT_UPPER_LIMITS = sys.jnt_range[1:, 1]
     JOINT_LOWER_LIMITS = sys.jnt_range[1:, 0]
-    DEFAULT_POSE = jp.array(
-        [
-            0.26,
-            0.0,
-            -0.52,
-            -0.26,
-            0.0,
-            0.52,
-            0.26,
-            0.0,
-            -0.52,
-            -0.26,
-            0.0,
-            0.52,
-        ]
-    )
+    DEFAULT_POSE = jp.array([
+        0.26,
+        0.0,
+        -0.52,
+        -0.26,
+        0.0,
+        0.52,
+        0.26,
+        0.0,
+        -0.52,
+        -0.26,
+        0.0,
+        0.52,
+    ])
 
     env_kwargs = dict(
         path=PATH.as_posix(),

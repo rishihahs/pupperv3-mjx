@@ -1,18 +1,19 @@
-from datetime import datetime
-import matplotlib.pyplot as plt
 import difflib
+import os
 import re
 import xml.etree.ElementTree as ET
-from typing import List, Callable, Tuple
-import mediapy as media
-import os
-import wandb
-import jax
-from jax import numpy as jp
-
-from flax.training import orbax_utils
-from orbax import checkpoint as ocp
+from datetime import datetime
 from pathlib import Path
+from typing import Callable, List, Tuple
+
+import jax
+import matplotlib.pyplot as plt
+import mediapy as media
+from flax.training import orbax_utils
+from jax import numpy as jp
+from orbax import checkpoint as ocp
+
+import wandb
 
 
 def circular_buffer_push_back(buffer: jax.Array, new_value: jax.Array) -> jax.Array:
@@ -242,17 +243,15 @@ def visualize_policy(
     jit_inference_fn = jax.jit(inference_fn)
 
     # Make robot go forward, back, left, right
-    command_seq = jp.array(
-        [
-            [0.0, 0.0, 0.0],
-            [vx, 0.0, 0.0],
-            [-vx, 0.0, 0.0],
-            [0.0, vy, 0.0],
-            [0.0, -vy, 0.0],
-            [0.0, 0.0, wz],
-            [0.0, 0.0, -wz],
-        ]
-    )
+    command_seq = jp.array([
+        [0.0, 0.0, 0.0],
+        [vx, 0.0, 0.0],
+        [-vx, 0.0, 0.0],
+        [0.0, vy, 0.0],
+        [0.0, -vy, 0.0],
+        [0.0, 0.0, wz],
+        [0.0, 0.0, -wz],
+    ])
 
     # initialize the state
     rng = jax.random.PRNGKey(0)

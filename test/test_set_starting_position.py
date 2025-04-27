@@ -2,10 +2,12 @@
 pytest test/test_set_starting_position.py
 """
 
-import pytest
-from pathlib import Path
-from pupperv3_mjx import utils
 import xml.etree.ElementTree as ET
+from pathlib import Path
+
+import pytest
+
+from pupperv3_mjx import utils
 
 
 def test_set_starting_position():
@@ -14,9 +16,7 @@ def test_set_starting_position():
     xml_str = ORIGINAL_MODEL_PATH.read_text()
     tree = ET.ElementTree(ET.fromstring(xml_str))
 
-    utils.set_robot_starting_position(
-        tree, starting_pos=[0.1, 0.2, 0.5], starting_quat=[0.1, 0.2, 0.3, 0.4]
-    )
+    utils.set_robot_starting_position(tree, starting_pos=[0.1, 0.2, 0.5], starting_quat=[0.1, 0.2, 0.3, 0.4])
 
     body = tree.find(".//worldbody/body[@name='base_link']")
     assert body.get("pos").split(" ")[0] == "0.1"

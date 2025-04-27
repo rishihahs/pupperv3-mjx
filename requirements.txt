@@ -11,3 +11,4 @@ numpy
 scipy
 mediapy
 wandb
+pre-commit

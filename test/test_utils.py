@@ -1,7 +1,8 @@
-import pytest
 import jax
-from jax import numpy as jp
 import numpy as np
+import pytest
+from jax import numpy as jp
+
 from pupperv3_mjx.utils import (
     activation_fn_map,
     circular_buffer_push_back,
@@ -77,9 +78,7 @@ def test_sample_lagged_value():
 
     # Sample action buffer
     latency_key = jax.random.PRNGKey(1)
-    sampled_value, buffer = sample_lagged_value(
-        latency_key, buffer, new_value, latency_distribution
-    )
+    sampled_value, buffer = sample_lagged_value(latency_key, buffer, new_value, latency_distribution)
 
     # Check that the sampled action is within the expected range
     assert jp.allclose(sampled_value, expected_value, atol=1e-5)
@@ -99,9 +98,7 @@ def test_sample_lagged_value_buffer_size_one():
 
     # Sample action buffer
     latency_key = jax.random.PRNGKey(1)
-    sampled_value, buffer = sample_lagged_value(
-        latency_key, buffer, new_value, latency_distribution
-    )
+    sampled_value, buffer = sample_lagged_value(latency_key, buffer, new_value, latency_distribution)
     expected_value = jp.ones(12)
 
     # Check that the sampled action is within the expected range
