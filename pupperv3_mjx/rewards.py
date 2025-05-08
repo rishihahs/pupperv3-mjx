@@ -58,8 +58,7 @@ def reward_action_rate(act: jax.Array, last_act: jax.Array) -> jax.Array:
 def reward_tracking_lin_vel(commands: jax.Array, x: Transform, xd: Motion, tracking_sigma) -> jax.Array:
     # Tracking of linear velocity commands (xy axes)
     local_vel = math.rotate(xd.vel[0], math.quat_inv(x.rot[0]))
-    # lin_vel_error = jp.sum(jp.square(commands[:2] - local_vel[:2]))
-    lin_vel_error = jp.sum(jp.square(commands[:1] - local_vel[2:]))  # go up and down
+    lin_vel_error = jp.sum(jp.square(commands[:2] - local_vel[:2]))
     lin_vel_reward = jp.exp(-lin_vel_error / tracking_sigma)
     return lin_vel_reward
 
