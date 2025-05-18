@@ -54,7 +54,6 @@ def get_config():
                         termination=-100.0,
                         # Penalizing foot slipping on the ground.
                         foot_slip=-0.1,
-                        foot_pos_diff=-1.0,
                         # Penalize knee hitting ground
                         knee_collision=-1.0,
                         # Penalize body hitting ground,

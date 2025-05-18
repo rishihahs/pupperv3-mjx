@@ -317,7 +317,7 @@ class PupperV3Env(PipelineEnv):
         init_q = domain_randomization.randomize_qpos(self._init_q, self._start_position_config, rng=randomize_pos_key)
 
         pipeline_state = self.pipeline_init(init_q, jp.zeros(self._nv))
-        foot_pos = pipeline_state.site_xpos[self._feet_site_id]
+
         state_info = {
             "rng": rng,
             "last_act": jp.zeros(12, dtype=float),
@@ -331,7 +331,6 @@ class PupperV3Env(PipelineEnv):
             "kick": jp.array([0.0, 0.0]),
             "step": 0,
             "desired_world_z_in_body_frame": self.sample_body_orientation(sample_orientation_key),
-            "start_foot_pos": foot_pos,
         }
 
         obs_history = jp.zeros(
@@ -381,22 +380,12 @@ class PupperV3Env(PipelineEnv):
         first_contact = (state.info["feet_air_time"] > 0) * contact_filt_mm
         state.info["feet_air_time"] += self.dt
 
-        # Foot motion
-        foot_pos = pipeline_state.site_xpos[self._feet_site_id]
-        state.info["start_foot_pos"] = jp.where(
-            state.info["step"] < 1,
-            foot_pos,
-            state.info["start_foot_pos"]
-        )
-        foot_pos_diff = jp.sum(jp.abs(foot_pos[:, :2] - state.info["start_foot_pos"][:, :2]))
-
         # Done if joint limits are reached or robot is falling
         up = jp.array([0.0, 0.0, 1.0])
         done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < np.cos(self._terminal_body_angle)
         done |= jp.any(joint_angles < self.lowers)
         done |= jp.any(joint_angles > self.uppers)
         done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
-        done |= jp.any(jp.abs(foot_pos[:, :2] - state.info["start_foot_pos"][:, :2]) > 0.03)
 
         # Reward
         rewards_dict = {
@@ -445,7 +434,6 @@ class PupperV3Env(PipelineEnv):
                 feet_site_id=self._feet_site_id,
                 lower_leg_body_id=self._lower_leg_body_id,
             ),
-            "foot_pos_diff": foot_pos_diff,
             "termination": rewards.reward_termination(
                 done,
                 state.info["step"],
