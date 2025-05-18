@@ -331,6 +331,7 @@ class PupperV3Env(PipelineEnv):
             "kick": jp.array([0.0, 0.0]),
             "step": 0,
             "desired_world_z_in_body_frame": self.sample_body_orientation(sample_orientation_key),
+            "stage": jp.array([1.0, 0, 0, 0, 0], dtype=float),
         }
 
         obs_history = jp.zeros(
@@ -386,6 +387,22 @@ class PupperV3Env(PipelineEnv):
         done |= jp.any(joint_angles < self.lowers)
         done |= jp.any(joint_angles > self.uppers)
         done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
+
+        com_height = x.pos[self._torso_idx - 1, 2]
+        reward =  state.info["stage"][0]*(-jp.abs(com_height - 0.35))
+        reward += state.info["stage"][1]*(-jp.abs(com_height - 0.2))
+        reward += state.info["stage"][2]*(com_height <= 0.5)*(com_height)
+        reward += state.info["stage"][3]*(com_height <= 0.5)*(com_height)
+        reward += state.info["stage"][4]*(-jp.abs(com_height - 0.35))
+
+        # body balance
+        world_z = jp.array([0.0, 0.0, 1.0])
+        world_z_in_body_frame = math.rotate(world_z, math.quat_inv(x.rot[0]))
+        self.rew_buf[:, 1] =  self.stage_buf[:, 0]*(-jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)))
+        self.rew_buf[:, 1] += self.stage_buf[:, 1]*(-jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)))
+        self.rew_buf[:, 1] += self.stage_buf[:, 2]*(-jp.abs(jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)) - jp.pi/2.0))
+        self.rew_buf[:, 1] += self.stage_buf[:, 3]*(-jp.abs(jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)) - jp.pi/2.0))
+        self.rew_buf[:, 1] += self.stage_buf[:, 4]*(-jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)))
 
         # Reward
         rewards_dict = {
