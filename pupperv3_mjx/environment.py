@@ -330,7 +330,7 @@ class PupperV3Env(PipelineEnv):
             "feet_air_time": jp.zeros(4, dtype=float),
             # "rewards": {k: 0.0 for k in self._reward_config.rewards.scales.keys()},
             # "rewards": {k: 0.0 for k in ["torques", "joint_acceleration", "mechanical_work", "action_rate", "foot_slip", "knee_collision", "body_collision", "height", "balance", "pitch", "style", "foot"]},
-            "rewards": {k: 0.0 for k in ["height", "balance", "pitch", "style", "foot", "knee_collision", "body_collision"]},
+            "rewards": {k: 0.0 for k in ["height", "life", "termination", "knee_collision", "body_collision", "torques", "joint_acceleration", "action_rate"]},
             "kick": jp.array([0.0, 0.0]),
             "step": 0,
             "desired_world_z_in_body_frame": self.sample_body_orientation(sample_orientation_key),
@@ -396,11 +396,12 @@ class PupperV3Env(PipelineEnv):
         done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
 
         com_height = x.pos[self._torso_idx - 1, 2]
-        height_reward =  state.info["stage"][0]*(-jp.abs(com_height - 0.15))
-        height_reward += state.info["stage"][1]*(-jp.abs(com_height - 0.11))
-        height_reward += state.info["stage"][2]*200*(com_height <= 0.4)*(com_height)
-        height_reward += state.info["stage"][3]*200*(com_height <= 0.4)*(com_height)
-        height_reward += state.info["stage"][4]*(-jp.abs(com_height - 0.15))
+        # height_reward =  state.info["stage"][0]*(-jp.abs(com_height - 0.15))
+        # height_reward += state.info["stage"][1]*(-jp.abs(com_height - 0.11))
+        # height_reward += state.info["stage"][2]*200*(com_height <= 0.4)*(com_height)
+        # height_reward += state.info["stage"][3]*200*(com_height <= 0.4)*(com_height)
+        # height_reward += state.info["stage"][4]*(-jp.abs(com_height - 0.15))
+        height_reward = 10*jp.exp(10*com_height) - 10
 
         # body balance
         world_z = jp.array([0.0, 0.0, 1.0])
@@ -473,10 +474,10 @@ class PupperV3Env(PipelineEnv):
         # Reward
         rewards_dict = {
             "height": height_reward,
-            "balance": balance_reward,
-            "pitch": pitch_reward,
-            "style": style_reward,
-            "foot": foot_reward,
+            # "balance": balance_reward,
+            # "pitch": pitch_reward,
+            # "style": style_reward,
+            # "foot": foot_reward,
             # "tracking_lin_vel": rewards.reward_tracking_lin_vel(
             #     state.info["command"],
             #     x,
@@ -497,12 +498,12 @@ class PupperV3Env(PipelineEnv):
             # "lin_vel_z": rewards.reward_lin_vel_z(xd),
             # "ang_vel_xy": rewards.reward_ang_vel_xy(xd),
             # "orientation": rewards.reward_orientation(x),
-            # "torques": rewards.reward_torques(pipeline_state.qfrc_actuator),  # pytype: disable=attribute-error
-            # "joint_acceleration": rewards.reward_joint_acceleration(joint_vel, state.info["last_vel"], dt=self._dt),
+            "torques": rewards.reward_torques(pipeline_state.qfrc_actuator),  # pytype: disable=attribute-error
+            "joint_acceleration": rewards.reward_joint_acceleration(joint_vel, state.info["last_vel"], dt=self._dt),
             # "mechanical_work": rewards.reward_mechanical_work(
             #     pipeline_state.qfrc_actuator[6:], pipeline_state.qvel[6:]
             # ),
-            # "action_rate": rewards.reward_action_rate(action, state.info["last_act"]),
+            "action_rate": rewards.reward_action_rate(action, state.info["last_act"]),
             # "stand_still": rewards.reward_stand_still(state.info["command"], joint_angles, self._default_pose, 0.1),
             # "stand_still_joint_velocity": rewards.reward_stand_still(
             #     state.info["command"], joint_vel, jp.zeros(12), self._stand_still_command_threshold
@@ -522,13 +523,14 @@ class PupperV3Env(PipelineEnv):
             #     feet_site_id=self._feet_site_id,
             #     lower_leg_body_id=self._lower_leg_body_id,
             # ),
-            # "termination": rewards.reward_termination(
-            #     done,
-            #     state.info["step"],
-            #     step_threshold=self._early_termination_step_threshold,
-            # ),
+            "termination": rewards.reward_termination(
+                done,
+                state.info["step"],
+                step_threshold=self._early_termination_step_threshold,
+            ),
             "knee_collision": rewards.reward_geom_collision(pipeline_state, self._upper_leg_geom_ids),
             "body_collision": rewards.reward_geom_collision(pipeline_state, self._torso_geom_ids),
+            "life": -1,
         }
         rewards_dict = {k: v * self._reward_config.rewards.scales[k] for k, v in rewards_dict.items()}
         # reward = jp.clip(sum(rewards_dict.values()) * self.dt, 0.0, 10000.0)
