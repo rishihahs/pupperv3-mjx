@@ -108,7 +108,8 @@ class PupperV3Env(PipelineEnv):
         last_action_noise: float = 0.01,
         kick_vel: float = 0.2,
         kick_probability: float = 0.02,
-        terminal_body_z: float = 0.1,
+        # terminal_body_z: float = 0.1,
+        terminal_body_z: float = 0.05,
         early_termination_step_threshold: int = 500,
         terminal_body_angle: float = 0.52,
         foot_radius: float = 0.02,
@@ -312,7 +313,7 @@ class PupperV3Env(PipelineEnv):
         return buf
 
     def reset(self, rng: jax.Array) -> State:  # pytype: disable=signature-mismatch
-        rng, sample_command_key, sample_orientation_key, randomize_pos_key = jax.random.split(rng, 4)
+        rng, sample_command_key, sample_orientation_key, randomize_pos_key, sample_start_time_key = jax.random.split(rng, 5)
 
         init_q = domain_randomization.randomize_qpos(self._init_q, self._start_position_config, rng=randomize_pos_key)
 
@@ -327,10 +328,15 @@ class PupperV3Env(PipelineEnv):
             "command": self.sample_command(sample_command_key),
             "last_contact": jp.zeros(4, dtype=bool),
             "feet_air_time": jp.zeros(4, dtype=float),
-            "rewards": {k: 0.0 for k in self._reward_config.rewards.scales.keys()},
+            # "rewards": {k: 0.0 for k in self._reward_config.rewards.scales.keys()},
+            # "rewards": {k: 0.0 for k in ["torques", "joint_acceleration", "mechanical_work", "action_rate", "foot_slip", "knee_collision", "body_collision", "height", "balance", "pitch", "style", "foot"]},
+            "rewards": {k: 0.0 for k in ["height", "balance", "pitch", "style", "foot", "knee_collision", "body_collision"]},
             "kick": jp.array([0.0, 0.0]),
             "step": 0,
             "desired_world_z_in_body_frame": self.sample_body_orientation(sample_orientation_key),
+            "start_time": jax.random.uniform(sample_start_time_key, minval=0.0, maxval=5.0),
+            "is_half_turn": 0,
+            "is_one_turn": 0,
             "stage": jp.array([1.0, 0, 0, 0, 0], dtype=float),
         }
 
@@ -383,84 +389,150 @@ class PupperV3Env(PipelineEnv):
 
         # Done if joint limits are reached or robot is falling
         up = jp.array([0.0, 0.0, 1.0])
-        done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < np.cos(self._terminal_body_angle)
-        done |= jp.any(joint_angles < self.lowers)
+        # done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < np.cos(self._terminal_body_angle)
+        # done |= jp.any(joint_angles < self.lowers)
+        done = jp.any(joint_angles < self.lowers)
         done |= jp.any(joint_angles > self.uppers)
         done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
 
         com_height = x.pos[self._torso_idx - 1, 2]
-        reward =  state.info["stage"][0]*(-jp.abs(com_height - 0.35))
-        reward += state.info["stage"][1]*(-jp.abs(com_height - 0.2))
-        reward += state.info["stage"][2]*(com_height <= 0.5)*(com_height)
-        reward += state.info["stage"][3]*(com_height <= 0.5)*(com_height)
-        reward += state.info["stage"][4]*(-jp.abs(com_height - 0.35))
+        height_reward =  state.info["stage"][0]*(-jp.abs(com_height - 0.15))
+        height_reward += state.info["stage"][1]*(-jp.abs(com_height - 0.11))
+        height_reward += state.info["stage"][2]*200*(com_height <= 0.4)*(com_height)
+        height_reward += state.info["stage"][3]*200*(com_height <= 0.4)*(com_height)
+        height_reward += state.info["stage"][4]*(-jp.abs(com_height - 0.15))
 
         # body balance
         world_z = jp.array([0.0, 0.0, 1.0])
         world_z_in_body_frame = math.rotate(world_z, math.quat_inv(x.rot[0]))
-        self.rew_buf[:, 1] =  self.stage_buf[:, 0]*(-jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)))
-        self.rew_buf[:, 1] += self.stage_buf[:, 1]*(-jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)))
-        self.rew_buf[:, 1] += self.stage_buf[:, 2]*(-jp.abs(jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)) - jp.pi/2.0))
-        self.rew_buf[:, 1] += self.stage_buf[:, 3]*(-jp.abs(jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)) - jp.pi/2.0))
-        self.rew_buf[:, 1] += self.stage_buf[:, 4]*(-jp.arccos(jp.clip(world_z_in_body_frame, -1.0, 1.0)))
+        balance_reward = state.info["stage"][0]*(-jp.arccos(jp.clip(world_z_in_body_frame[2], -1.0, 1.0)))
+        balance_reward += state.info["stage"][1]*(-jp.arccos(jp.clip(world_z_in_body_frame[2], -1.0, 1.0)))
+        balance_reward += state.info["stage"][2]*(-jp.abs(jp.arccos(jp.clip(world_z_in_body_frame[1], -1.0, 1.0)) - jp.pi/2.0))
+        balance_reward += state.info["stage"][3]*(-jp.abs(jp.arccos(jp.clip(world_z_in_body_frame[1], -1.0, 1.0)) - jp.pi/2.0))
+        balance_reward += state.info["stage"][4]*(-jp.arccos(jp.clip(world_z_in_body_frame[2], -1.0, 1.0)))
 
+        # pitch vel
+        base_lin_vels = math.rotate(xd.vel[0, :], math.quat_inv(x.rot[0]))
+        base_ang_vels = math.rotate(xd.ang[0, :], math.quat_inv(x.rot[0]))
+        vel_penalty = jp.square(base_lin_vels[0]) + jp.square(base_lin_vels[1]) + jp.square(base_ang_vels[2])
+        base_ang_vel_y = base_ang_vels[1]
+        pitch_reward = state.info["stage"][0]*(-vel_penalty)
+        pitch_reward += state.info["stage"][1]*(-vel_penalty)
+        pitch_reward += state.info["stage"][2]*(1.0 - state.info["is_one_turn"])*(-base_ang_vel_y)
+        pitch_reward += state.info["stage"][3]*(1.0 - state.info["is_one_turn"])*(-base_ang_vel_y)
+        pitch_reward += state.info["stage"][4]*(-vel_penalty)
+
+        # style
+        style_reward = -jp.mean(jp.square(joint_angles - self._default_pose))
+
+        # foot contact
+        contact_float = contact_filt_mm.astype('float32')
+        foot_reward = state.info["stage"][0]*0.25*jp.sum(contact_float)
+        foot_reward += state.info["stage"][1]*0.25*jp.sum(contact_float)
+        foot_reward += state.info["stage"][2]*((contact_float[2] + contact_float[3])/2.0)
+        foot_reward += state.info["stage"][3]*(1.0 - jp.sum(contact_float)/4.0)
+        # reward += state.info["stage"][3]*0.25*jp.sum(contact_float)
+        foot_reward += state.info["stage"][4]*0.25*jp.sum(contact_float)
+
+        from2_to3 = jp.logical_and(
+            state.info["stage"][2] == 1.0, 
+            jp.all(~contact_filt_mm)
+        ).astype('float32')
+        state.info["stage"] = state.info["stage"].at[2].set((1.0 - from2_to3)*state.info["stage"][2])
+        state.info["stage"] = state.info["stage"].at[3].set(from2_to3 + (1.0 - from2_to3)*state.info["stage"][3])
+        from1_to2 = jp.logical_and(
+            state.info["stage"][1] == 1.0, jp.logical_and(
+                com_height <= 0.12, 
+                jp.all(contact_filt_mm)
+            )
+        ).astype('float32')
+        state.info["stage"] = state.info["stage"].at[1].set((1.0 - from1_to2)*state.info["stage"][1])
+        state.info["stage"] = state.info["stage"].at[2].set(from1_to2 + (1.0 - from1_to2)*state.info["stage"][2])
+        from0_to1 = jp.logical_and(
+            state.info["stage"][0] == 1.0, jp.logical_and(
+                state.info["step"]*self.dt > state.info["start_time"], jp.logical_and(
+                    com_height >= 0.14, 
+                    state.info["is_half_turn"] == 0
+                )
+            )
+        ).astype('float32')
+        state.info["stage"] = state.info["stage"].at[0].set((1.0 - from0_to1)*state.info["stage"][0])
+        state.info["stage"] = state.info["stage"].at[1].set(from0_to1 + (1.0 - from0_to1)*state.info["stage"][1])
+
+        # check the robot tumbling
+        state.info["is_half_turn"] = jp.logical_or(
+            state.info["is_half_turn"], jp.logical_and(
+                world_z_in_body_frame[0] < 0, world_z_in_body_frame[2] < 0)).astype(int)
+        state.info["is_one_turn"] = jp.logical_or(
+            state.info["is_one_turn"], jp.logical_and(
+                state.info["is_half_turn"], jp.logical_and(
+                    world_z_in_body_frame[0] >= 0, world_z_in_body_frame[2] >= 0))).astype(int)
+
+        # jax.debug.print("com_height {com_height}, time {time}, from0to1 {from0to1}, start+time {start_time}, stage {stage}", com_height=com_height, time=(state.info["step"]*self.dt), from0to1=from0_to1, start_time=state.info["start_time"], stage=state.info["stage"])
+        
         # Reward
         rewards_dict = {
-            "tracking_lin_vel": rewards.reward_tracking_lin_vel(
-                state.info["command"],
-                x,
-                xd,
-                tracking_sigma=self._reward_config.rewards.tracking_sigma,
-            ),
-            "tracking_ang_vel": rewards.reward_tracking_ang_vel(
-                state.info["command"],
-                x,
-                xd,
-                tracking_sigma=self._reward_config.rewards.tracking_sigma,
-            ),
-            "tracking_orientation": rewards.reward_tracking_orientation(
-                state.info["desired_world_z_in_body_frame"],
-                x,
-                tracking_sigma=self._reward_config.rewards.tracking_sigma,
-            ),
-            "lin_vel_z": rewards.reward_lin_vel_z(xd),
-            "ang_vel_xy": rewards.reward_ang_vel_xy(xd),
-            "orientation": rewards.reward_orientation(x),
-            "torques": rewards.reward_torques(pipeline_state.qfrc_actuator),  # pytype: disable=attribute-error
-            "joint_acceleration": rewards.reward_joint_acceleration(joint_vel, state.info["last_vel"], dt=self._dt),
-            "mechanical_work": rewards.reward_mechanical_work(
-                pipeline_state.qfrc_actuator[6:], pipeline_state.qvel[6:]
-            ),
-            "action_rate": rewards.reward_action_rate(action, state.info["last_act"]),
-            "stand_still": rewards.reward_stand_still(state.info["command"], joint_angles, self._default_pose, 0.1),
-            "stand_still_joint_velocity": rewards.reward_stand_still(
-                state.info["command"], joint_vel, jp.zeros(12), self._stand_still_command_threshold
-            ),
-            "abduction_angle": rewards.reward_abduction_angle(
-                joint_angles,
-                desired_abduction_angles=self._desired_abduction_angles,
-            ),
-            "feet_air_time": rewards.reward_feet_air_time(
-                state.info["feet_air_time"],
-                first_contact,
-                state.info["command"],
-            ),
-            "foot_slip": rewards.reward_foot_slip(
-                pipeline_state,
-                contact_filt_cm,
-                feet_site_id=self._feet_site_id,
-                lower_leg_body_id=self._lower_leg_body_id,
-            ),
-            "termination": rewards.reward_termination(
-                done,
-                state.info["step"],
-                step_threshold=self._early_termination_step_threshold,
-            ),
+            "height": height_reward,
+            "balance": balance_reward,
+            "pitch": pitch_reward,
+            "style": style_reward,
+            "foot": foot_reward,
+            # "tracking_lin_vel": rewards.reward_tracking_lin_vel(
+            #     state.info["command"],
+            #     x,
+            #     xd,
+            #     tracking_sigma=self._reward_config.rewards.tracking_sigma,
+            # ),
+            # "tracking_ang_vel": rewards.reward_tracking_ang_vel(
+            #     state.info["command"],
+            #     x,
+            #     xd,
+            #     tracking_sigma=self._reward_config.rewards.tracking_sigma,
+            # ),
+            # "tracking_orientation": rewards.reward_tracking_orientation(
+            #     state.info["desired_world_z_in_body_frame"],
+            #     x,
+            #     tracking_sigma=self._reward_config.rewards.tracking_sigma,
+            # ),
+            # "lin_vel_z": rewards.reward_lin_vel_z(xd),
+            # "ang_vel_xy": rewards.reward_ang_vel_xy(xd),
+            # "orientation": rewards.reward_orientation(x),
+            # "torques": rewards.reward_torques(pipeline_state.qfrc_actuator),  # pytype: disable=attribute-error
+            # "joint_acceleration": rewards.reward_joint_acceleration(joint_vel, state.info["last_vel"], dt=self._dt),
+            # "mechanical_work": rewards.reward_mechanical_work(
+            #     pipeline_state.qfrc_actuator[6:], pipeline_state.qvel[6:]
+            # ),
+            # "action_rate": rewards.reward_action_rate(action, state.info["last_act"]),
+            # "stand_still": rewards.reward_stand_still(state.info["command"], joint_angles, self._default_pose, 0.1),
+            # "stand_still_joint_velocity": rewards.reward_stand_still(
+            #     state.info["command"], joint_vel, jp.zeros(12), self._stand_still_command_threshold
+            # ),
+            # "abduction_angle": rewards.reward_abduction_angle(
+            #     joint_angles,
+            #     desired_abduction_angles=self._desired_abduction_angles,
+            # ),
+            # "feet_air_time": rewards.reward_feet_air_time(
+            #     state.info["feet_air_time"],
+            #     first_contact,
+            #     state.info["command"],
+            # ),
+            # "foot_slip": rewards.reward_foot_slip(
+            #     pipeline_state,
+            #     contact_filt_cm,
+            #     feet_site_id=self._feet_site_id,
+            #     lower_leg_body_id=self._lower_leg_body_id,
+            # ),
+            # "termination": rewards.reward_termination(
+            #     done,
+            #     state.info["step"],
+            #     step_threshold=self._early_termination_step_threshold,
+            # ),
             "knee_collision": rewards.reward_geom_collision(pipeline_state, self._upper_leg_geom_ids),
             "body_collision": rewards.reward_geom_collision(pipeline_state, self._torso_geom_ids),
         }
         rewards_dict = {k: v * self._reward_config.rewards.scales[k] for k, v in rewards_dict.items()}
-        reward = jp.clip(sum(rewards_dict.values()) * self.dt, 0.0, 10000.0)
+        # reward = jp.clip(sum(rewards_dict.values()) * self.dt, 0.0, 10000.0)
+        reward = jp.clip(sum(rewards_dict.values()) * self.dt, -100.0, 10000.0)
 
         # State management
         state.info["kick"] = kick

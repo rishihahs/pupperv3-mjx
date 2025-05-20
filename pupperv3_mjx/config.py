@@ -13,6 +13,11 @@ def get_config():
                 # torques in Nm, and time in seconds, and forces in Newtons.
                 scales=config_dict.ConfigDict(
                     dict(
+                        height=10.0,
+                        balance=1.0,
+                        pitch=1.0,
+                        style=0.03,
+                        foot=10.0,
                         # Tracking rewards are computed using exp(-delta^2/sigma)
                         # sigma can be a hyperparameters to tune.
                         # Track the base x-y velocity (no z-velocity tracking.)
