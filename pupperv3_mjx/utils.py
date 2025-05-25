@@ -94,20 +94,21 @@ def progress(
     min_y (float): The minimum y-axis value.
     max_y (float): The maximum y-axis value.
     """
-    times.append(datetime.now())
-    x_data.append(num_steps)
-    y_data.append(metrics["eval/episode_reward"])
-    ydataerr.append(metrics["eval/episode_reward_std"])
+    if "eval/episode_reward" in metrics:
+        times.append(datetime.now())
+        x_data.append(num_steps)
+        y_data.append(metrics["eval/episode_reward"])
+        ydataerr.append(metrics["eval/episode_reward_std"])
+    
+        plt.xlim([0, num_timesteps * 1.25])
+        plt.ylim([min_y, max_y])
+    
+        plt.xlabel("# environment steps")
+        plt.ylabel("reward per episode")
+        plt.title(f"y={y_data[-1]:.3f}")
 
-    plt.xlim([0, num_timesteps * 1.25])
-    plt.ylim([min_y, max_y])
-
-    plt.xlabel("# environment steps")
-    plt.ylabel("reward per episode")
-    plt.title(f"y={y_data[-1]:.3f}")
-
-    plt.errorbar(x_data, y_data, yerr=ydataerr)
-    plt.show()
+        plt.errorbar(x_data, y_data, yerr=ydataerr)
+        plt.show()
 
     wandb.log(metrics, step=num_steps)
 
@@ -239,7 +240,7 @@ def visualize_policy(
     wz (float): The rotational velocity.
     """
 
-    inference_fn = make_policy((params[0], params[1].policy))
+    inference_fn = make_policy((params[0], params[1]))
     jit_inference_fn = jax.jit(inference_fn)
 
     # Make robot go forward, back, left, right
@@ -252,6 +253,16 @@ def visualize_policy(
         [0.0, 0.0, wz],
         [0.0, 0.0, -wz],
     ])
+
+    # command_seq = jp.array([
+    #     [0.0, 0.0, 0.0],
+    #     [0.0, 0.0, 0.0],
+    #     [0.0, 0.0, 0.0],
+    #     [0.0, 0.0, 0.0],
+    #     [0.0, 0.0, 0.0],
+    #     [0.0, 0.0, 0.0],
+    #     [0.0, 0.0, 0.0],
+    # ])
 
     # initialize the state
     rng = jax.random.PRNGKey(0)

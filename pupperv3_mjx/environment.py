@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import jax
 import mujoco
+from mujoco import mjx
 import numpy as np
 from brax import base, math
 from brax.envs.base import PipelineEnv, State
@@ -27,6 +28,63 @@ def body_name_to_geom_ids(mj_model, body_name: str) -> np.array:
 
 def body_names_to_geom_ids(mj_model, body_names: List[str]) -> np.array:
     return np.concatenate(list(body_name_to_geom_ids(mj_model, name) for name in body_names))
+
+
+# Given an mjx state `d`, calculates forces for all contacts.
+@jax.jit
+def get_contact_forces(d: mjx.Data):
+    # mju_decodePyramid
+    # 1: force: result
+    # 2: pyramid: d.efc_force + contact.efc_address
+    # 3: mu: contact.friction
+    # 4: dim: contact.dim
+
+    contact = d.contact
+    cnt = d.ncon
+    
+    # Generate 2d array of efc_force indexed by efc_address containing the maximum
+    # number of potential elements (10).
+    # This enables us to operate on each contact force pyramid rowwise.
+    efc_argmap = jp.linspace(
+      contact.efc_address,
+      contact.efc_address + 9,
+      10, dtype=jp.int32
+    ).T
+    # OOB access clamps in jax, this is safe
+    pyramid = d.efc_force[efc_argmap.reshape((efc_argmap.size))].reshape(efc_argmap.shape)
+
+    # Calculate normal forces
+    # force[0] = 0
+    # for (int i=0; i < 2*(dim-1); i++) {
+    #   force[0] += pyramid[i];
+    # }
+    index_matrix = jp.repeat(jp.arange(10)[None, :], cnt, axis=0)
+    force_normal_mask = index_matrix < (2 * (contact.dim - 1)).reshape((cnt, 1))
+    force_normal = jp.sum(jp.where(force_normal_mask, pyramid, 0), axis=1)
+
+    # Calculate tangent forces
+    # for (int i=0; i < dim-1; i++) {
+    #   force[i+1] = (pyramid[2*i] - pyramid[2*i+1]) * mu[i];
+    # }
+    pyramid_indexes = jp.arange(5) * 2
+    force_tan_all = (pyramid[:, pyramid_indexes] - pyramid[:, pyramid_indexes + 1]) * contact.friction
+    force_tan = jp.where(pyramid_indexes < contact.dim.reshape((cnt, 1)), force_tan_all, 0)
+
+    # Full force array
+    forces = jp.concatenate((force_normal.reshape((cnt, 1)), force_tan), axis=1)
+    
+    # Special case frictionless contacts
+    # if (dim == 1) {
+    #   force[0] = pyramid[0];
+    #   return;
+    # }
+    frictionless_mask = contact.dim == 1
+    frictionless_forces = jp.concatenate((pyramid[:,0:1], jp.zeros((pyramid.shape[0], 5))), axis=1)
+    return jp.where(
+        frictionless_mask.reshape((cnt, 1)),
+        frictionless_forces,
+        forces
+    )
 
 
 class PupperV3Env(PipelineEnv):
@@ -78,6 +136,12 @@ class PupperV3Env(PipelineEnv):
             "leg_front_l_3_foot_site",
             "leg_back_r_3_foot_site",
             "leg_back_l_3_foot_site",
+        ],
+        foot_geom_names: List[str] = [
+            "leg_front_r_3_foot_geom",
+            "leg_front_l_3_foot_geom",
+            "leg_back_r_3_foot_geom",
+            "leg_back_l_3_foot_geom",
         ],
         torso_name: str = "base_link",
         upper_leg_body_names: List[str] = [
@@ -199,6 +263,11 @@ class PupperV3Env(PipelineEnv):
         feet_site_id = [mujoco.mj_name2id(sys.mj_model, mujoco.mjtObj.mjOBJ_SITE.value, f) for f in feet_site]
         assert not any(id_ == -1 for id_ in feet_site_id), "Site not found."
         self._feet_site_id = np.array(feet_site_id)
+        floor_id = mujoco.mj_name2id(sys.mj_model, mujoco.mjtObj.mjOBJ_GEOM, "floor")
+        foot_geom_ids = np.array([mujoco.mj_name2id(sys.mj_model, mujoco.mjtObj.mjOBJ_GEOM, name) for name in foot_geom_names])
+        assert not any(id_ == -1 for id_ in foot_geom_ids), "Site not found."
+        self._floor_geom_id_pairs = np.concatenate((np.repeat(floor_id, foot_geom_ids.shape[0]).reshape(-1, 1), foot_geom_ids.reshape(-1, 1)), axis=1)
+        assert(sys.mj_model.opt.cone == mujoco.mjtCone.mjCONE_PYRAMIDAL) # Assert cone is PYRAMIDAL
 
         self._lower_leg_body_id = body_names_to_body_ids(sys.mj_model, lower_leg_body_names)
         self._upper_leg_geom_ids = body_names_to_geom_ids(sys.mj_model, upper_leg_body_names)
@@ -224,6 +293,8 @@ class PupperV3Env(PipelineEnv):
         self._resample_velocity_step = resample_velocity_step
 
         # observation configuration
+        # self.observation_dim = 36  # 33 without orientation, 36 with orientation
+        # self.observation_dim = 35  # 33 without orientation, 36 with orientation
         self.observation_dim = 36  # 33 without orientation, 36 with orientation
         self._observation_history = observation_history
 
@@ -330,7 +401,8 @@ class PupperV3Env(PipelineEnv):
             "feet_air_time": jp.zeros(4, dtype=float),
             # "rewards": {k: 0.0 for k in self._reward_config.rewards.scales.keys()},
             # "rewards": {k: 0.0 for k in ["torques", "joint_acceleration", "mechanical_work", "action_rate", "foot_slip", "knee_collision", "body_collision", "height", "balance", "pitch", "style", "foot"]},
-            "rewards": {k: 0.0 for k in ["height", "life", "termination", "knee_collision", "body_collision", "torques", "joint_acceleration", "action_rate"]},
+            # "rewards": {k: 0.0 for k in ["height", "balance", "pitch", "style", "foot", "termination", "knee_collision", "body_collision", "torques", "joint_acceleration", "action_rate", "mechanical_work"]},
+            "rewards": {k: 0.0 for k in ["height", "termination", "life"]},
             "kick": jp.array([0.0, 0.0]),
             "step": 0,
             "desired_world_z_in_body_frame": self.sample_body_orientation(sample_orientation_key),
@@ -338,6 +410,7 @@ class PupperV3Env(PipelineEnv):
             "is_half_turn": 0,
             "is_one_turn": 0,
             "stage": jp.array([1.0, 0, 0, 0, 0], dtype=float),
+            "foot_contact_forces": jp.zeros(4, dtype=float),
         }
 
         obs_history = jp.zeros(
@@ -353,7 +426,7 @@ class PupperV3Env(PipelineEnv):
         return state
 
     def step(self, state: State, action: jax.Array) -> State:  # pytype: disable=signature-mismatch
-        state.info["rng"], cmd_rng, kick_noise_2, kick_bernoulli, latency_key = jax.random.split(state.info["rng"], 5)
+        state.info["rng"], cmd_rng, kick_noise_2, kick_bernoulli, latency_key, cmd_binarylol_key = jax.random.split(state.info["rng"], 6)
 
         # Whether to kick and the kick velocity are both random
         kick = jax.random.uniform(kick_noise_2, shape=(2,), minval=-1.0, maxval=1.0) * self._kick_vel
@@ -387,6 +460,21 @@ class PupperV3Env(PipelineEnv):
         first_contact = (state.info["feet_air_time"] > 0) * contact_filt_mm
         state.info["feet_air_time"] += self.dt
 
+        # Foot contact based on contact forces
+        matching_contacts = state.pipeline_state.contact.geom[None, :, :] == self._floor_geom_id_pairs[:, None, :]
+        matching_contacts = jp.all(matching_contacts, axis=2)
+        contact_ids = jp.where(matching_contacts.any(axis=1), matching_contacts.argmax(axis=1), -1)
+        forces_all = get_contact_forces(state.pipeline_state)
+        safe_indices = jp.where(contact_ids == -1, 0, contact_ids)
+        forces = forces_all[safe_indices, :]
+        mask = (contact_ids != -1)[:, None]
+        forces = jp.where(mask, forces, 0)
+        rots = jp.transpose(state.pipeline_state.contact.frame[contact_ids], (0, 2, 1))
+        world_forces = (rots @ forces[:, :3, None]).squeeze(-1)
+        foot_contact_forces = world_forces[:, 2]
+        # foot_contact_forces = pipeline_state.sensordata[self._feet_contact_sensor_adr]
+        state.info["foot_contact_forces"] = foot_contact_forces
+
         # Done if joint limits are reached or robot is falling
         up = jp.array([0.0, 0.0, 1.0])
         # done = jp.dot(math.rotate(up, x.rot[self._torso_idx - 1]), up) < np.cos(self._terminal_body_angle)
@@ -396,12 +484,17 @@ class PupperV3Env(PipelineEnv):
         done |= pipeline_state.x.pos[self._torso_idx - 1, 2] < self._terminal_body_z
 
         com_height = x.pos[self._torso_idx - 1, 2]
-        # height_reward =  state.info["stage"][0]*(-jp.abs(com_height - 0.15))
+        # com_height = pipeline_state.subtree_com[0][2]
+        # height_reward =  state.info["stage"][0]*(-jp.abs(com_height - 0.14))
         # height_reward += state.info["stage"][1]*(-jp.abs(com_height - 0.11))
-        # height_reward += state.info["stage"][2]*200*(com_height <= 0.4)*(com_height)
-        # height_reward += state.info["stage"][3]*200*(com_height <= 0.4)*(com_height)
-        # height_reward += state.info["stage"][4]*(-jp.abs(com_height - 0.15))
-        height_reward = 10*jp.exp(10*com_height) - 10
+        # height_reward += state.info["stage"][2]*(jp.where(com_height < 0.15, -20 * (0.15 - com_height) / 0.15, jp.exp(jp.log(501) / 0.2 * (com_height - 0.15)) - 1))
+        # height_reward += state.info["stage"][3]*(jp.where(com_height < 0.15, -20 * (0.15 - com_height) / 0.15, jp.exp(jp.log(501) / 0.2 * (com_height - 0.15)) - 1))
+        # # height_reward += state.info["stage"][2]*((20*jp.exp(10*com_height) - 20) * (com_height >= 0.25).astype('float32'))
+        # # height_reward += state.info["stage"][3]*((20*jp.exp(10*com_height) - 20) * (com_height >= 0.25).astype('float32'))
+        # height_reward += state.info["stage"][4]*(-jp.abs(com_height - 0.14))
+        height_reward = 60*jp.exp(10*com_height) - 60
+        # height_reward =  state.info["stage"][0]*(jp.where(com_height < 0.15, -2 * (0.15 - com_height) / 0.15, jp.exp(jp.log(501) / 0.2 * (com_height - 0.15)) - 1))
+        # height_reward += state.info["stage"][1]*(10)
 
         # body balance
         world_z = jp.array([0.0, 0.0, 1.0])
@@ -427,7 +520,9 @@ class PupperV3Env(PipelineEnv):
         style_reward = -jp.mean(jp.square(joint_angles - self._default_pose))
 
         # foot contact
-        contact_float = contact_filt_mm.astype('float32')
+        contact_via_force = foot_contact_forces > 0.25
+        contact_float = contact_via_force.astype('float32')
+        # contact_float = contact.astype('float32')
         foot_reward = state.info["stage"][0]*0.25*jp.sum(contact_float)
         foot_reward += state.info["stage"][1]*0.25*jp.sum(contact_float)
         foot_reward += state.info["stage"][2]*((contact_float[2] + contact_float[3])/2.0)
@@ -435,30 +530,48 @@ class PupperV3Env(PipelineEnv):
         # reward += state.info["stage"][3]*0.25*jp.sum(contact_float)
         foot_reward += state.info["stage"][4]*0.25*jp.sum(contact_float)
 
-        from2_to3 = jp.logical_and(
-            state.info["stage"][2] == 1.0, 
-            jp.all(~contact_filt_mm)
-        ).astype('float32')
-        state.info["stage"] = state.info["stage"].at[2].set((1.0 - from2_to3)*state.info["stage"][2])
-        state.info["stage"] = state.info["stage"].at[3].set(from2_to3 + (1.0 - from2_to3)*state.info["stage"][3])
-        from1_to2 = jp.logical_and(
-            state.info["stage"][1] == 1.0, jp.logical_and(
-                com_height <= 0.12, 
-                jp.all(contact_filt_mm)
-            )
-        ).astype('float32')
-        state.info["stage"] = state.info["stage"].at[1].set((1.0 - from1_to2)*state.info["stage"][1])
-        state.info["stage"] = state.info["stage"].at[2].set(from1_to2 + (1.0 - from1_to2)*state.info["stage"][2])
-        from0_to1 = jp.logical_and(
-            state.info["stage"][0] == 1.0, jp.logical_and(
-                state.info["step"]*self.dt > state.info["start_time"], jp.logical_and(
-                    com_height >= 0.14, 
-                    state.info["is_half_turn"] == 0
-                )
-            )
-        ).astype('float32')
-        state.info["stage"] = state.info["stage"].at[0].set((1.0 - from0_to1)*state.info["stage"][0])
-        state.info["stage"] = state.info["stage"].at[1].set(from0_to1 + (1.0 - from0_to1)*state.info["stage"][1])
+        # switch = jax.random.bernoulli(cmd_binarylol_key).astype('float32')
+        # state.info["command"] = jp.array([switch, switch, switch])
+        ## from0_to1 = jp.logical_and(
+        ##     state.info["stage"][0] == 1.0, jp.logical_and(
+        ##         jp.any(contact_via_force),
+        ##         state.info["is_half_turn"] == 1
+        ##     )
+        ## ).astype('float32')
+        ## state.info["stage"] = state.info["stage"].at[0].set((1.0 - from0_to1)*state.info["stage"][0])
+        ## state.info["stage"] = state.info["stage"].at[1].set(from0_to1 + (1.0 - from0_to1)*state.info["stage"][1])
+        # from3_to4 = jp.logical_and(
+        #     state.info["stage"][3] == 1.0, jp.logical_and(
+        #         jp.any(contact_via_force),
+        #         state.info["is_half_turn"] == 1
+        #     )
+        # ).astype('float32')
+        # state.info["stage"] = state.info["stage"].at[3].set((1.0 - from3_to4)*state.info["stage"][3])
+        # state.info["stage"] = state.info["stage"].at[4].set(from3_to4 + (1.0 - from3_to4)*state.info["stage"][4])
+        # from2_to3 = jp.logical_and(
+        #     state.info["stage"][2] == 1.0, 
+        #     jp.all(~contact_via_force)
+        # ).astype('float32')
+        # state.info["stage"] = state.info["stage"].at[2].set((1.0 - from2_to3)*state.info["stage"][2])
+        # state.info["stage"] = state.info["stage"].at[3].set(from2_to3 + (1.0 - from2_to3)*state.info["stage"][3])
+        # from1_to2 = jp.logical_and(
+        #     state.info["stage"][1] == 1.0, jp.logical_and(
+        #         com_height <= 0.11, 
+        #         jp.all(contact_via_force)
+        #     )
+        # ).astype('float32')
+        # state.info["stage"] = state.info["stage"].at[1].set((1.0 - from1_to2)*state.info["stage"][1])
+        # state.info["stage"] = state.info["stage"].at[2].set(from1_to2 + (1.0 - from1_to2)*state.info["stage"][2])
+        # from0_to1 = jp.logical_and(
+        #     state.info["stage"][0] == 1.0, jp.logical_and(
+        #         state.info["step"]*self.dt > state.info["start_time"], jp.logical_and(
+        #             com_height >= 0.135, 
+        #             state.info["is_half_turn"] == 0
+        #         )
+        #     )
+        # ).astype('float32')
+        # state.info["stage"] = state.info["stage"].at[0].set((1.0 - from0_to1)*state.info["stage"][0])
+        # state.info["stage"] = state.info["stage"].at[1].set(from0_to1 + (1.0 - from0_to1)*state.info["stage"][1])
 
         # check the robot tumbling
         state.info["is_half_turn"] = jp.logical_or(
@@ -468,6 +581,9 @@ class PupperV3Env(PipelineEnv):
             state.info["is_one_turn"], jp.logical_and(
                 state.info["is_half_turn"], jp.logical_and(
                     world_z_in_body_frame[0] >= 0, world_z_in_body_frame[2] >= 0))).astype(int)
+
+        # landing_wo_turns = jp.logical_and(state.info["stage"][3] == 1.0, jp.logical_and(jp.any(contact_via_force), state.info["is_half_turn"] == 0))
+        # done |= landing_wo_turns
 
         # jax.debug.print("com_height {com_height}, time {time}, from0to1 {from0to1}, start+time {start_time}, stage {stage}", com_height=com_height, time=(state.info["step"]*self.dt), from0to1=from0_to1, start_time=state.info["start_time"], stage=state.info["stage"])
         
@@ -498,12 +614,12 @@ class PupperV3Env(PipelineEnv):
             # "lin_vel_z": rewards.reward_lin_vel_z(xd),
             # "ang_vel_xy": rewards.reward_ang_vel_xy(xd),
             # "orientation": rewards.reward_orientation(x),
-            "torques": rewards.reward_torques(pipeline_state.qfrc_actuator),  # pytype: disable=attribute-error
-            "joint_acceleration": rewards.reward_joint_acceleration(joint_vel, state.info["last_vel"], dt=self._dt),
+            # "torques": rewards.reward_torques(pipeline_state.qfrc_actuator),  # pytype: disable=attribute-error
+            # "joint_acceleration": rewards.reward_joint_acceleration(joint_vel, state.info["last_vel"], dt=self._dt),
             # "mechanical_work": rewards.reward_mechanical_work(
             #     pipeline_state.qfrc_actuator[6:], pipeline_state.qvel[6:]
             # ),
-            "action_rate": rewards.reward_action_rate(action, state.info["last_act"]),
+            # "action_rate": rewards.reward_action_rate(action, state.info["last_act"]),
             # "stand_still": rewards.reward_stand_still(state.info["command"], joint_angles, self._default_pose, 0.1),
             # "stand_still_joint_velocity": rewards.reward_stand_still(
             #     state.info["command"], joint_vel, jp.zeros(12), self._stand_still_command_threshold
@@ -528,8 +644,8 @@ class PupperV3Env(PipelineEnv):
                 state.info["step"],
                 step_threshold=self._early_termination_step_threshold,
             ),
-            "knee_collision": rewards.reward_geom_collision(pipeline_state, self._upper_leg_geom_ids),
-            "body_collision": rewards.reward_geom_collision(pipeline_state, self._torso_geom_ids),
+            # "knee_collision": rewards.reward_geom_collision(pipeline_state, self._upper_leg_geom_ids),
+            # "body_collision": rewards.reward_geom_collision(pipeline_state, self._torso_geom_ids),
             "life": -1,
         }
         rewards_dict = {k: v * self._reward_config.rewards.scales[k] for k, v in rewards_dict.items()}
@@ -617,6 +733,8 @@ class PupperV3Env(PipelineEnv):
         obs = jp.concatenate([
             lagged_imu_data,  # noised angular velocity and gravity
             state_info["command"],  # command
+            # state_info["stage"],
+            # state_info["foot_contact_forces"],
             state_info["desired_world_z_in_body_frame"],  # desired body orientation
             pipeline_state.q[7:] - self._default_pose + motor_ang_noise,  # motor angles
             state_info["last_act"] + last_action_noise,  # last action
