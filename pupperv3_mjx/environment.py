@@ -1,4 +1,6 @@
 from typing import Any, Dict, List, Optional, Sequence, Tuple
+from pathlib import Path
+import functools
 
 import jax
 import mujoco
@@ -6,6 +8,9 @@ from mujoco import mjx
 import numpy as np
 from brax import base, math
 from brax.envs.base import PipelineEnv, State
+from brax.training.agents.ppo import checkpoint
+from brax.training.agents.ppo import networks as ppo_networks
+from brax.training.acme import running_statistics
 from brax.io import mjcf
 from jax import numpy as jp
 
@@ -315,6 +320,28 @@ class PupperV3Env(PipelineEnv):
         # whether to use imu
         self._use_imu = use_imu
 
+        utils.download_checkpoint(
+            entity_name="rishi-shah",
+            project_name="pupperv3-mjx-rl",
+            run_number=192,
+            save_path="seed-policy"
+        )
+        hidden_layer_sizes = (256, 128, 128, 128)
+        activation = "elu"
+        make_networks_factory = functools.partial(
+            ppo_networks.make_ppo_networks,
+            policy_hidden_layer_sizes=hidden_layer_sizes,
+            activation=utils.activation_fn_map(activation)
+        )
+        normalize = running_statistics.normalize
+        ppo_network = make_networks_factory(
+            (self._observation_history * self.observation_dim,), self.action_size, preprocess_observations_fn=normalize
+        )
+        # self.seed_policy = checkpoint.load_policy(Path("seed-policy"), network_factory=make_networks_factory, deterministic=False)
+        params = checkpoint.load(Path("seed-policy").absolute())
+        make_policy = ppo_networks.make_inference_fn(ppo_network)
+        self.seed_policy = make_policy((params[0], params[1]))
+
     def sample_command(self, rng: jax.Array) -> jax.Array:
         """
         Sample random command with desired linear and angular velocity ranges.
@@ -384,7 +411,7 @@ class PupperV3Env(PipelineEnv):
         return buf
 
     def reset(self, rng: jax.Array) -> State:  # pytype: disable=signature-mismatch
-        rng, sample_command_key, sample_orientation_key, randomize_pos_key, sample_start_time_key = jax.random.split(rng, 5)
+        rng, sample_command_key, sample_orientation_key, randomize_pos_key, sample_start_time_key, seed_policy_key = jax.random.split(rng, 6)
 
         init_q = domain_randomization.randomize_qpos(self._init_q, self._start_position_config, rng=randomize_pos_key)
 
@@ -422,6 +449,23 @@ class PupperV3Env(PipelineEnv):
         for k in state_info["rewards"]:
             metrics[k] = state_info["rewards"][k]
         state = State(pipeline_state, obs, reward, done, metrics, state_info)  # pytype: disable=wrong-arg-types
+
+        def loop_body(carry):
+            seed_policy_key, state = carry
+            seed_policy_key, subkey = jax.random.split(seed_policy_key)
+            a, _ = self.seed_policy(state.obs, subkey)
+            state = self.step(state, a)
+            return seed_policy_key, state
+
+        def cond_fn(carry):
+            _, state = carry
+            return jp.logical_or(
+                state.info["step"]*self.dt < 0.3,
+                jp.all(state.info["foot_contact_forces"] < 0.25),
+            )
+
+        carry = (seed_policy_key, state)
+        seed_policy_key, state = jax.lax.while_loop(cond_fn, loop_body, carry)
 
         return state
 
